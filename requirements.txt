@@ -1,0 +1,18 @@
+# YOLO-Think 模型训练平台依赖
+# 推荐使用 Python 3.10+
+
+# GUI框架
+PyQt5>=5.15.0
+
+# YOLO模型核心库
+ultralytics>=8.2.0
+
+# 图像处理
+opencv-python>=4.8.0
+
+# 数据处理
+numpy>=1.24.0
+PyYAML>=6.0
+
+# 系统监控
+psutil>=5.9.0
