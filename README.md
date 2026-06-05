@@ -84,7 +84,6 @@
 ### 1. 安装依赖
 
 ```bash
-cd yolo_think
 pip install -r requirements.txt
 ```
 
@@ -165,28 +164,25 @@ python start.py
 
 ---
 
-### 4. EXE 打包版
-
-运行 `python build_exe.py` 生成独立运行包，输出在 `dist/YOLO CODE/`。
-
-将整个 `YOLO CODE` 文件夹复制到任意电脑，双击 `YOLO CODE.exe` 即可运行，无需安装 Python。
-
-
 ## 项目结构
 
 ```
-yolo_think/
+YOLO_CODE/
 ├── main.py                 # 程序入口
+├── start.py                # 跨平台启动器（自动检查依赖）
 ├── requirements.txt        # 依赖列表
 ├── README.md               # 本文档
 ├── ui/
+│   ├── __init__.py
 │   └── main_window.py      # 全部UI组件
 ├── core/
+│   ├── __init__.py
 │   ├── annotation.py       # 标注管理
 │   ├── training.py         # 训练管理+环境检测
 │   ├── inference.py        # 推理管理
 │   └── evaluation.py       # 评估管理
 └── utils/
+    ├── __init__.py
     ├── config.py            # 工作目录+自动扫描
     └── helpers.py           # 工具函数
 ```
