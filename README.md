@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" width="80" alt="YOLO CODE Logo" />
+  <img src="screenshots/logo.png" width="80" alt="YOLO CODE Logo" />
 </p>
 
 <h1 align="center">YOLO CODE 模型训练平台</h1>
