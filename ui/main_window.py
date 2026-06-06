@@ -2932,7 +2932,7 @@ class EvaluationWidget(QWidget):
         param_layout.addWidget(QLabel("置信度阈值:"))
         self.conf_spin = QDoubleSpinBox()
         self.conf_spin.setRange(0.01, 1.0)
-        self.conf_spin.setValue(0.5)
+        self.conf_spin.setValue(0.25)
         self.conf_spin.setSingleStep(0.05)
         param_layout.addWidget(self.conf_spin)
 
@@ -2944,6 +2944,26 @@ class EvaluationWidget(QWidget):
         param_layout.addWidget(self.iou_spin)
 
         left_layout.addWidget(param_group)
+
+        # 多模型对比
+        compare_group = QGroupBox("多模型对比")
+        compare_layout = QVBoxLayout(compare_group)
+        compare_layout.addWidget(QLabel("选择多个 .pt 文件:"))
+        self.compare_list = QListWidget()
+        self.compare_list.setMaximumHeight(80)
+        compare_btn_row = QHBoxLayout()
+        add_model_btn = QPushButton("+ 添加模型")
+        add_model_btn.clicked.connect(self._add_compare_model)
+        clear_models_btn = QPushButton("清空")
+        clear_models_btn.clicked.connect(self.compare_list.clear)
+        compare_btn_row.addWidget(add_model_btn)
+        compare_btn_row.addWidget(clear_models_btn)
+        compare_layout.addLayout(compare_btn_row)
+        compare_layout.addWidget(self.compare_list)
+        self.compare_btn = QPushButton("开始对比评估")
+        self.compare_btn.clicked.connect(self._start_compare)
+        compare_layout.addWidget(self.compare_btn)
+        left_layout.addWidget(compare_group)
 
         # 评估按钮
         self.eval_btn = QPushButton("▶ 开始评估")
@@ -2978,23 +2998,80 @@ class EvaluationWidget(QWidget):
         self.progress_bar = QProgressBar()
         right_layout.addWidget(self.progress_bar)
 
-        # 结果展示
-        result_group = QGroupBox("评估结果")
-        result_layout = QVBoxLayout(result_group)
+        # 结果 Tab
+        self.result_tabs = QTabWidget()
 
+        # Tab 1: 汇总指标
+        summary_tab = QWidget()
+        summary_layout = QVBoxLayout(summary_tab)
         self.metrics_table = QTableWidget()
         self.metrics_table.setColumnCount(2)
         self.metrics_table.setHorizontalHeaderLabels(["指标", "值"])
         self.metrics_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        result_layout.addWidget(self.metrics_table)
+        summary_layout.addWidget(self.metrics_table)
+        self.result_tabs.addTab(summary_tab, "汇总")
 
-        right_layout.addWidget(result_group)
+        # Tab 2: Per-class 详情
+        perclass_tab = QWidget()
+        perclass_layout = QVBoxLayout(perclass_tab)
+        self.perclass_table = QTableWidget()
+        self.perclass_table.setColumnCount(6)
+        self.perclass_table.setHorizontalHeaderLabels(["类别", "Precision", "Recall", "F1", "mAP50", "mAP50-95"])
+        self.perclass_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        perclass_layout.addWidget(self.perclass_table)
+        self.result_tabs.addTab(perclass_tab, "Per-Class")
+
+        # Tab 3: 误检/漏检
+        error_tab = QWidget()
+        error_layout = QVBoxLayout(error_tab)
+        error_filter = QHBoxLayout()
+        error_filter.addWidget(QLabel("筛选:"))
+        self.error_type_combo = QComboBox()
+        self.error_type_combo.addItems(["高置信FP(误检)", "FN(漏检)", "低置信TP", "全部FP"])
+        self.error_type_combo.currentIndexChanged.connect(self._refresh_error_list)
+        error_filter.addWidget(self.error_type_combo)
+        error_filter.addStretch()
+        self.error_count_label = QLabel("共 0 例")
+        error_filter.addWidget(self.error_count_label)
+        error_layout.addLayout(error_filter)
+        self.error_list = QListWidget()
+        self.error_list.itemClicked.connect(self._on_error_selected)
+        error_layout.addWidget(self.error_list)
+        self.error_preview = QLabel()
+        self.error_preview.setAlignment(Qt.AlignCenter)
+        self.error_preview.setMinimumHeight(120)
+        self.error_preview.setStyleSheet("border: 1px solid #ddd; background: #fafafa;")
+        error_layout.addWidget(self.error_preview)
+        self.result_tabs.addTab(error_tab, "误检/漏检")
+
+        # Tab 4: 混淆矩阵
+        cm_tab = QWidget()
+        cm_layout = QVBoxLayout(cm_tab)
+        self.cm_label = QLabel("评估完成后自动生成")
+        self.cm_label.setAlignment(Qt.AlignCenter)
+        self.cm_label.setMinimumHeight(200)
+        self.cm_label.setStyleSheet("border: 1px solid #ddd; background: #fafafa;")
+        cm_layout.addWidget(self.cm_label)
+        self.result_tabs.addTab(cm_tab, "混淆矩阵")
+
+        # Tab 5: 多模型对比
+        cmp_tab = QWidget()
+        cmp_layout = QVBoxLayout(cmp_tab)
+        self.compare_table = QTableWidget()
+        self.compare_table.setColumnCount(6)
+        self.compare_table.setHorizontalHeaderLabels(["模型", "mAP50", "mAP50-95", "Precision", "Recall", "F1"])
+        self.compare_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        cmp_layout.addWidget(self.compare_table)
+        self.result_tabs.addTab(cmp_tab, "模型对比")
+
+        right_layout.addWidget(self.result_tabs)
 
         # 日志
         log_group = QGroupBox("评估日志")
         log_layout = QVBoxLayout(log_group)
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(120)
         log_layout.addWidget(self.log_text)
         right_layout.addWidget(log_group)
 
@@ -3050,32 +3127,154 @@ class EvaluationWidget(QWidget):
         else:
             QMessageBox.critical(self, "导出失败", str(result))
 
+
+    def _display_results(self, results):
+        # ── 汇总 ──
+        self.metrics_table.setRowCount(5)
+        for i, (key, label) in enumerate([
+            ('mAP50', 'mAP@0.5'), ('mAP50_95', 'mAP@0.5:0.95'),
+            ('precision', 'Precision'), ('recall', 'Recall'), ('f1', 'F1')
+        ]):
+            self.metrics_table.setItem(i, 0, QTableWidgetItem(label))
+            self.metrics_table.setItem(i, 1, QTableWidgetItem(f"{results.get(key, 0):.4f}"))
+
+        # ── Per-class ──
+        per_class = results.get('per_class', [])
+        self.perclass_table.setRowCount(len(per_class))
+        for i, pc in enumerate(per_class):
+            self.perclass_table.setItem(i, 0, QTableWidgetItem(pc['name']))
+            for j, key in enumerate(['Precision', 'Recall', 'F1', 'mAP50', 'mAP50-95']):
+                self.perclass_table.setItem(i, j+1, QTableWidgetItem(f"{pc.get(key, 0):.3f}"))
+
+        # ── 误检/漏检 ──
+        self.error_samples = results.get('error_samples', {})
+        self._refresh_error_list()
+
+        # ── 混淆矩阵 ──
+        cm_path = results.get('confusion_matrix')
+        if cm_path and os.path.isfile(cm_path):
+            pix = QPixmap(cm_path)
+            scaled = pix.scaled(500, 500, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.cm_label.setPixmap(scaled)
+        else:
+            self.cm_label.setText("无混淆矩阵（ultralytics 8.3+ 需 plots=True）")
+
+        # ── 多模型对比表（单模型时只显示当前） ──
+        self._update_compare_table([results])
+
+    def _refresh_error_list(self):
+        if not hasattr(self, 'error_samples') or not self.error_samples:
+            return
+        filter_type = self.error_type_combo.currentText()
+        key_map = {'高置信FP(误检)': 'fp_high', 'FN(漏检)': 'fn', '低置信TP': 'tp_low', '全部FP': 'fp'}
+        key = key_map.get(filter_type, 'fp')
+        items = self.error_samples.get(key, [])
+        if key == 'fp':
+            items = self.error_samples.get('fp', []) + self.error_samples.get('fp_high', [])
+        self.error_list.clear()
+        for e in items:
+            self.error_list.addItem(
+                f"[{e.get('class', '?')}] {Path(e.get('image', '')).name} — {e.get('reason', '')}"
+            )
+        self.error_count_label.setText(f"共 {len(items)} 例")
+
+    def _on_error_selected(self, item):
+        idx = self.error_list.currentRow()
+        filter_type = self.error_type_combo.currentText()
+        key_map = {'高置信FP(误检)': 'fp_high', 'FN(漏检)': 'fn', '低置信TP': 'tp_low', '全部FP': 'fp'}
+        key = key_map.get(filter_type, 'fp')
+        items = self.error_samples.get(key, [])
+        if key == 'fp':
+            items = self.error_samples.get('fp', []) + self.error_samples.get('fp_high', [])
+        if 0 <= idx < len(items):
+            e = items[idx]
+            img_path = e.get('image', '')
+            if os.path.isfile(img_path):
+                import cv2
+                img = cv2.imread(img_path)
+                if img is not None:
+                    bbox = e.get('bbox', [0, 0, 0, 0])
+                    cv2.rectangle(img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+                    h, w = img.shape[:2]
+                    s = min(300 / max(w, 1), 300 / max(h, 1))
+                    img = cv2.resize(img, (int(w*s), int(h*s)))
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    q = QImage(img.data, img.shape[1], img.shape[0], img.shape[1]*3, QImage.Format_RGB888)
+                    self.error_preview.setPixmap(QPixmap.fromImage(q))
+                    return
+        self.error_preview.setText("无预览")
+
+    def _update_compare_table(self, all_results):
+        self.compare_table.setRowCount(len(all_results))
+        for i, r in enumerate(all_results):
+            self.compare_table.setItem(i, 0, QTableWidgetItem(r.get('model_name', '?')))
+            for j, key in enumerate(['mAP50', 'mAP50_95', 'precision', 'recall', 'f1']):
+                self.compare_table.setItem(i, j+1, QTableWidgetItem(f"{r.get(key, 0):.4f}"))
+
+    def _add_compare_model(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, "选择模型文件", "", "PyTorch (*.pt);;All (*)")
+        for p in paths:
+            self.compare_list.addItem(p)
+
+    def _start_compare(self):
+        if self.compare_list.count() == 0:
+            QMessageBox.warning(self, "警告", "请先添加至少一个模型文件")
+            return
+        data_yaml = self.data_yaml_edit.text()
+        if not data_yaml or not Path(data_yaml).exists():
+            QMessageBox.warning(self, "警告", "请先选择数据集配置!")
+            return
+        model_paths = [self.compare_list.item(i).text() for i in range(self.compare_list.count())]
+        self.eval_btn.setEnabled(False)
+        self.compare_btn.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.log_text.clear()
+        self.manager.compare_models(
+            model_paths, data_yaml,
+            conf=self.conf_spin.value(), iou=self.iou_spin.value()
+        )
+
+    def _start_evaluation(self):
+        model_path = self.model_path_edit.text()
+        data_yaml = self.data_yaml_edit.text()
+
+        if not model_path or not Path(model_path).exists():
+            QMessageBox.warning(self, "警告", "请先选择模型文件!")
+            return
+        if not data_yaml or not Path(data_yaml).exists():
+            QMessageBox.warning(self, "警告", "请先选择数据集配置!")
+            return
+
+        self.eval_btn.setEnabled(False)
+        self.compare_btn.setEnabled(False)
+        self.progress_bar.setValue(0)
+        self.log_text.clear()
+        self.error_list.clear()
+        self.cm_label.setText("评估中...")
+        self.manager.evaluate(
+            model_path, data_yaml,
+            conf=self.conf_spin.value(),
+            iou=self.iou_spin.value()
+        )
+
     def _on_log(self, message):
         self.log_text.append(message)
-        QApplication.processEvents()
 
     def _on_progress(self, value):
         self.progress_bar.setValue(value)
 
-        # 评估完成后更新结果表格
         if value >= 100 and self.manager.results:
             results = self.manager.results
-            self.metrics_table.setRowCount(len(results))
-            metrics_names = {
-                'mAP50': 'mAP@0.5',
-                'mAP50-95': 'mAP@0.5:0.95',
-                'precision': 'Precision',
-                'recall': 'Recall',
-                'f1_score': 'F1 Score'
-            }
-            row = 0
-            for key, display_name in metrics_names.items():
-                if key in results:
-                    self.metrics_table.setItem(row, 0, QTableWidgetItem(display_name))
-                    self.metrics_table.setItem(row, 1, QTableWidgetItem(f"{results[key]:.4f}"))
-                    row += 1
+            self._display_results(results)
+
+            # 多模型对比：单模型评估完也更新对比表
+            if self.manager.all_results:
+                self._update_compare_table(self.manager.all_results)
+            else:
+                self._update_compare_table([results])
 
             self.eval_btn.setEnabled(True)
+            self.compare_btn.setEnabled(True)
 
 
 class DashboardWidget(QWidget):
