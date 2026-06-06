@@ -3723,12 +3723,32 @@ class MainWindow(QMainWindow):
         self.gpu_label.setStyleSheet("font-size: 14px; color: #888;")
         status_layout.addWidget(self.gpu_label)
 
+        # 版本信息
+        self.version_label = QLabel()
+        self.version_label.setStyleSheet("font-size: 12px; color: #aaa;")
+        status_layout.addWidget(self.version_label)
+
         status_layout.addStretch()
 
         self.status_bar.addWidget(status_widget)
 
+        # ── 启动时检测版本 ──
+        QTimer.singleShot(100, self._show_version_info)
+
         # 自动检测环境并更新仪表盘（延迟执行避免阻塞UI）
         QTimer.singleShot(500, self._refresh_dashboard)
+
+    def _show_version_info(self):
+        """状态栏显示 Python / torch / CUDA 版本"""
+        parts = [f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"]
+        try:
+            import torch
+            parts.append(f"PyTorch {torch.__version__}")
+            if torch.cuda.is_available():
+                parts.append(f"CUDA {torch.version.cuda}")
+        except ImportError:
+            parts.append("PyTorch 未安装")
+        self.version_label.setText(" | ".join(parts))
 
     def _make_nav_handler(self, index):
         return lambda: self._switch_page(index)
