@@ -2137,7 +2137,7 @@ class InferenceWidget(QWidget):
         # 置信度
         p_layout.addWidget(QLabel("置信度阈值:"), 0, 0)
         conf_row = QHBoxLayout()
-        self.conf_label = QLabel("0.50")
+        self.conf_label = QLabel("0.25")
         self.conf_label.setMinimumWidth(35)
         self.conf_label.setStyleSheet("font-weight: bold; color: #ff6b00;")
         self.conf_label.setAlignment(Qt.AlignCenter)
@@ -2149,7 +2149,7 @@ class InferenceWidget(QWidget):
         conf_row.addWidget(cr1)
         self.conf_slider = QSlider(Qt.Horizontal)
         self.conf_slider.setRange(1, 99)
-        self.conf_slider.setValue(50)
+        self.conf_slider.setValue(25)
         self.conf_slider.valueChanged.connect(self._on_conf_changed)
         conf_row.addWidget(self.conf_slider)
         conf_row.addWidget(cr2)
@@ -2186,6 +2186,22 @@ class InferenceWidget(QWidget):
         max_row.addWidget(QLabel("个"))
         max_row.addStretch()
         p_layout.addLayout(max_row, 2, 1)
+
+        # agnostic_nms + vid_stride
+        self.agnostic_nms_check = QCheckBox("类别无关NMS")
+        self.agnostic_nms_check.setToolTip("合并所有类别的重叠框")
+        p_layout.addWidget(self.agnostic_nms_check, 3, 0)
+
+        p_layout.addWidget(QLabel("视频跳帧:"), 3, 1)
+        vid_row = QHBoxLayout()
+        self.vid_stride_spin = QSpinBox()
+        self.vid_stride_spin.setRange(1, 60)
+        self.vid_stride_spin.setValue(1)
+        self.vid_stride_spin.setToolTip("每 N 帧推理一次（1=每帧都推理）")
+        vid_row.addWidget(self.vid_stride_spin)
+        vid_row.addWidget(QLabel("帧/次"))
+        vid_row.addStretch()
+        p_layout.addLayout(vid_row, 3, 1)
 
         row2.addWidget(param_grp, 3)
 
@@ -2275,6 +2291,30 @@ class InferenceWidget(QWidget):
 
         self.save_result_check = QCheckBox("保存")
         src_layout.addWidget(self.save_result_check)
+
+        # 可视化开关
+        self.show_label_check = QCheckBox("标签")
+        self.show_label_check.setChecked(True)
+        self.show_label_check.setToolTip("显示类别名称")
+        src_layout.addWidget(self.show_label_check)
+        self.show_conf_check = QCheckBox("置信")
+        self.show_conf_check.setChecked(True)
+        self.show_conf_check.setToolTip("显示置信度数值")
+        src_layout.addWidget(self.show_conf_check)
+        self.show_box_check = QCheckBox("框")
+        self.show_box_check.setChecked(True)
+        self.show_box_check.setToolTip("显示检测框")
+        src_layout.addWidget(self.show_box_check)
+
+        # 增强导出
+        self.export_json_btn = QPushButton("导出 JSON")
+        self.export_json_btn.setToolTip("导出原始坐标 JSON（原图尺寸）")
+        self.export_json_btn.clicked.connect(self._export_results_json)
+        src_layout.addWidget(self.export_json_btn)
+        self.export_crop_btn = QPushButton("裁剪保存")
+        self.export_crop_btn.setToolTip("按类别裁剪小图保存")
+        self.export_crop_btn.clicked.connect(self._crop_and_save)
+        src_layout.addWidget(self.export_crop_btn)
 
         self.run_btn = QPushButton("▶ 开始推理")
         self.run_btn.setObjectName("btnTrain")
@@ -2412,6 +2452,16 @@ class InferenceWidget(QWidget):
         self.iou_label.setText(f"{v / 100:.2f}")
         self.manager.iou_threshold = v / 100
 
+    def sync_inference_params(self):
+        """初始同步推理参数到 manager"""
+        self.manager.conf_threshold = self.conf_slider.value() / 100
+        self.manager.iou_threshold = self.iou_slider.value() / 100
+        self.manager.max_det = self.max_det_spin.value()
+
+    def _on_iou_changed(self, v):
+        self.iou_label.setText(f"{v / 100:.2f}")
+        self.manager.iou_threshold = v / 100
+
     def _browse_model(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择模型", "", "PyTorch (*.pt);;All (*)")
         if path:
@@ -2505,6 +2555,7 @@ class InferenceWidget(QWidget):
                 half=self.half_prec_check.isChecked(),
                 augment=self.augment_infer_check.isChecked(),
                 max_det=self.max_det_spin.value(),
+                agnostic_nms=self.agnostic_nms_check.isChecked(),
                 device=dev_map.get(self.infer_device_combo.currentText()),
             )
             if error:
@@ -2516,8 +2567,9 @@ class InferenceWidget(QWidget):
             param_log = (
                 f"[推理] {Path(img_path).name} | "
                 f"模型: {Path(self.manager.model_path).name if self.manager.model_path else '?'} | "
-                f"conf={self.manager.conf_threshold:.2f} | "
-                f"imgsz={self.infer_imgsz_spin.value()} | "
+                f"conf={self.manager.conf_threshold:.2f} iou={self.manager.iou_threshold:.2f} | "
+                f"max_det={self.max_det_spin.value()} | imgsz={self.infer_imgsz_spin.value()} | "
+                f"{'FP16' if self.half_prec_check.isChecked() else 'FP32'} | "
                 f"耗时={el:.0f}ms"
             )
             print(param_log)  # 终端可回溯
@@ -2546,7 +2598,11 @@ class InferenceWidget(QWidget):
             self.video_running = True
             self.run_btn.setVisible(False)
             self.stop_video_btn.setVisible(True)
-            self.manager.run_video(self.input_path_edit.text(), self._on_video_frame)
+            self.manager.half_prec = self.half_prec_check.isChecked()
+            self.manager.run_video(
+                self.input_path_edit.text(), self._on_video_frame,
+                vid_stride=self.vid_stride_spin.value()
+            )
 
         elif self.camera_radio.isChecked():
             cam_id = self.camera_combo.currentData()
@@ -2556,6 +2612,7 @@ class InferenceWidget(QWidget):
             self.video_running = True
             self.run_btn.setVisible(False)
             self.stop_video_btn.setVisible(True)
+            self.manager.half_prec = self.half_prec_check.isChecked()
             self.manager.run_camera(cam_id, self._on_video_frame)
 
     def _stop_video(self):
@@ -2615,11 +2672,41 @@ class InferenceWidget(QWidget):
         import datetime
         d = os.path.join(get_work_dir(), 'inference_results')
         os.makedirs(d, exist_ok=True)
-        p = os.path.join(d, f'infer_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.jpg')
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        p = os.path.join(d, f'infer_{ts}.jpg')
         cv2.imwrite(p, img)
-        QMessageBox.information(self, "已保存", f"保存至:\n{p}")
+        QMessageBox.information(self, "已保存", f"带框图片保存至:\n{p}")
+
+    def _export_results_json(self):
+        """导出原始坐标 JSON"""
+        if self.detect_table.rowCount() == 0:
+            return
+        from utils.config import get_work_dir
+        import json, datetime
+        img_path = self.input_path_edit.text()
+        img = cv2.imread(img_path)
+        oh, ow = img.shape[:2] if img is not None else (0, 0)
+        d = os.path.join(get_work_dir(), 'inference_results')
+        os.makedirs(d, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        p = os.path.join(d, f'results_{ts}.json')
+        data = {
+            'image': Path(img_path).name,
+            'size': {'width': ow, 'height': oh},
+            'detections': []
+        }
+        for r in range(self.detect_table.rowCount()):
+            data['detections'].append({
+                'class': self.detect_table.item(r, 1).text(),
+                'confidence': float(self.detect_table.item(r, 2).text()),
+                'bbox': [int(self.detect_table.item(r, c).text()) for c in range(3, 7)]
+            })
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        QMessageBox.information(self, "导出完成", f"JSON 保存至:\n{p}")
 
     def _export_results(self):
+        """导出 CSV"""
         if self.detect_table.rowCount() == 0:
             return
         from utils.config import get_work_dir
@@ -2632,7 +2719,38 @@ class InferenceWidget(QWidget):
             w.writerow(['序号', '类别', '置信度', 'X1', 'Y1', 'X2', 'Y2'])
             for r in range(self.detect_table.rowCount()):
                 w.writerow([self.detect_table.item(r, c).text() for c in range(7)])
-        QMessageBox.information(self, "导出完成", f"保存至:\n{p}")
+        QMessageBox.information(self, "导出完成", f"CSV 保存至:\n{p}")
+
+    def _crop_and_save(self):
+        """按类别裁剪小图保存"""
+        if self.detect_table.rowCount() == 0:
+            return
+        from utils.config import get_work_dir
+        import datetime
+        img_path = self.input_path_edit.text()
+        img = cv2.imread(img_path)
+        if img is None:
+            return
+        d = os.path.join(get_work_dir(), 'inference_results', 'crops',
+                         datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+        os.makedirs(d, exist_ok=True)
+        by_class = {}
+        for r in range(self.detect_table.rowCount()):
+            cls = self.detect_table.item(r, 1).text()
+            x1 = int(self.detect_table.item(r, 3).text())
+            y1 = int(self.detect_table.item(r, 4).text())
+            x2 = int(self.detect_table.item(r, 5).text())
+            y2 = int(self.detect_table.item(r, 6).text())
+            if cls not in by_class:
+                by_class[cls] = 0
+            by_class[cls] += 1
+            crop = img[max(0, y1):min(img.shape[0], y2), max(0, x1):min(img.shape[1], x2)]
+            crop_path = os.path.join(d, f'{cls}_{by_class[cls]}.jpg')
+            cv2.imwrite(crop_path, crop)
+        parts = [f'{c}x{n}' for c, n in by_class.items()]
+        QMessageBox.information(self, "裁剪完成",
+                                f"共 {self.detect_table.rowCount()} 个目标，{len(by_class)} 类\n"
+                                f"{', '.join(parts)}\n保存至:\n{d}")
 
     def _export_json(self):
         if self.detect_table.rowCount() == 0:

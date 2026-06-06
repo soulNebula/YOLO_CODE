@@ -411,7 +411,7 @@ class AnnotationManager:
         """黄金比例色相生成固定颜色"""
         hue = (class_id * 0.618) % 1.0
         r, g, b = hsv_to_rgb(hue, 0.8, 0.95)
-        return (int(r), int(g), int(b))
+        return (int(r * 255), int(g * 255), int(b * 255))
 
     def get_class_color(self, class_id):
         """获取类别颜色，按需生成"""
