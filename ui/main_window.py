@@ -32,7 +32,8 @@ from utils.helpers import (
     get_yolo_classes_from_dataset, save_yolo_dataset_config,
     get_supported_models, get_default_training_params
 )
-from utils.validator import validate_dataset, auto_fix_issues
+from utils.validator import validate_dataset, auto_fix_issues, \
+    validate_yaml_consistency, auto_generate_yaml
 from core.training import get_pip_mirrors
 
 
@@ -1156,15 +1157,20 @@ class TrainingWidget(QWidget):
         ds_row = QHBoxLayout()
         self.data_yaml_edit = QLineEdit()
         self.data_yaml_edit.setReadOnly(True)
-        self.data_yaml_edit.setPlaceholderText("选择 data.yaml...")
+        self.data_yaml_edit.setPlaceholderText("选择或生成 data.yaml...")
         ds_browse = QPushButton("浏览")
         ds_browse.clicked.connect(self._browse_data)
+        ds_gen = QPushButton("自动生成")
+        ds_gen.setToolTip("从数据集目录自动生成 data.yaml")
+        ds_gen.clicked.connect(self._generate_yaml)
         ds_row.addWidget(self.data_yaml_edit)
         ds_row.addWidget(ds_browse)
+        ds_row.addWidget(ds_gen)
         ds_model_layout.addLayout(ds_row, 0, 1)
 
         self.data_info_label = QLabel("未加载数据集")
         self.data_info_label.setObjectName("subtitleLabel")
+        self.data_info_label.setWordWrap(True)
         ds_model_layout.addWidget(self.data_info_label, 1, 1)
 
         ds_model_layout.addWidget(QLabel("模型:"), 2, 0)
@@ -1540,9 +1546,51 @@ class TrainingWidget(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, "选择数据集配置文件", "", "YAML (*.yaml *.yml);;All (*)")
         if path:
             self.data_yaml_edit.setText(path)
-            classes, _ = get_yolo_classes_from_dataset(path)
-            if classes:
-                self.data_info_label.setText(f"类别数: {len(classes)} | {', '.join(classes[:8])}{'...' if len(classes) > 8 else ''}")
+            self._validate_current_yaml(path)
+
+    def _generate_yaml(self):
+        dir_path = QFileDialog.getExistingDirectory(self, "选择数据集根目录")
+        if not dir_path:
+            return
+        yaml_path, consistency = auto_generate_yaml(dir_path)
+        if yaml_path is None:
+            QMessageBox.warning(self, "生成失败", "未找到图片目录，无法生成 data.yaml。\n请确保数据集包含 images/ 目录。")
+            return
+        self.data_yaml_edit.setText(yaml_path)
+        if consistency and not consistency.ok:
+            self._show_yaml_issues(consistency)
+        else:
+            self._show_yaml_ok(consistency)
+
+    def _validate_current_yaml(self, path):
+        consistency = validate_yaml_consistency(path)
+        if consistency.ok and not consistency.warnings():
+            self._show_yaml_ok(consistency)
+        else:
+            self._show_yaml_issues(consistency)
+
+    def _show_yaml_ok(self, consistency):
+        if consistency and consistency.names:
+            self.data_info_label.setText(
+                f"✅ nc={consistency.nc} 类别: {', '.join(consistency.names[:8])}"
+                f"{'...' if len(consistency.names) > 8 else ''}"
+            )
+            self.data_info_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        else:
+            self.data_info_label.setText("✅ 已加载")
+            self.data_info_label.setStyleSheet("color: #27ae60;")
+
+    def _show_yaml_issues(self, consistency):
+        parts = [f"nc={consistency.nc}, names×{len(consistency.names)}"]
+        for msg in consistency.errors():
+            parts.append(f"❌ {msg}")
+        for msg in consistency.warnings():
+            parts.append(f"⚠️ {msg}")
+        self.data_info_label.setText('\n'.join(parts))
+        self.data_info_label.setStyleSheet(
+            "color: #e74c3c; font-weight: bold;" if consistency.errors()
+            else "color: #e67e22; font-weight: bold;"
+        )
 
     def _start_training(self):
         data_yaml = self.data_yaml_edit.text()
@@ -1604,6 +1652,20 @@ class TrainingWidget(QWidget):
         self.metric_ax.set_ylabel('mAP')
         self.metric_ax.grid(True, alpha=0.3)
         self.curve_canvas.draw()
+
+        # ── YAML 一致性校验 ──
+        consistency = validate_yaml_consistency(data_yaml)
+        if consistency.errors():
+            msgs = '\n'.join(f"  • {m}" for m in consistency.errors())
+            reply = QMessageBox.warning(
+                self, "data.yaml 配置问题",
+                f"data.yaml 存在以下问题:\n\n{msgs}\n\n建议修复后再训练。\n是否仍然继续？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                self.train_btn.setEnabled(True)
+                self.stop_btn.setEnabled(False)
+                return
 
         # ── 数据集验证 ──
         result = validate_dataset(data_yaml)
