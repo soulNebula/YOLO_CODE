@@ -22,6 +22,8 @@ class ImageCanvas(QLabel):
     zoomChanged = pyqtSignal(float)
     mouseMoved = pyqtSignal(int, int)
     panModeChanged = pyqtSignal(bool)
+    copyPrevRequested = pyqtSignal()
+    discardRequested = pyqtSignal()
 
     CORNER_RADIUS = 10
     CORNER_ANCHORS = {
@@ -83,6 +85,10 @@ class ImageCanvas(QLabel):
         self._panning = False
         self._pan_start = None
 
+        # 辅助功能
+        self._aspect_ratio = None     # None = 自由，或浮点数 w/h
+        self._filter_class_id = -1    # -1 = 显示全部
+
         self.setCursor(Qt.ArrowCursor)
 
     # ═══════════════════════════════════════════════════════════
@@ -111,6 +117,19 @@ class ImageCanvas(QLabel):
 
     def is_pan_mode(self):
         return self._pan_mode
+
+    def set_aspect_ratio(self, ratio):
+        """设置绘制长宽比锁定。None=自由，浮点数=w/h"""
+        self._aspect_ratio = ratio
+
+    def aspect_ratio(self):
+        return self._aspect_ratio
+
+    def set_filter_class(self, class_id):
+        """设置标签过滤器。-1=全部，其他值=只显示该 class_id"""
+        self._filter_class_id = class_id
+        self._bg_dirty = True
+        self._invalidate()
 
     def load_image(self, img_array, annotations=None, zoom_fit=True):
         self.original_image = img_array.copy() if img_array is not None else None
@@ -234,6 +253,9 @@ class ImageCanvas(QLabel):
 
         for idx, ann in enumerate(self.annotation_view):
             cls_id = ann.get('class_id', 0)
+            # 标签过滤 — 跳过不匹配的类别
+            if self._filter_class_id >= 0 and cls_id != self._filter_class_id:
+                continue
             color = self.colors.get(cls_id, (0, 255, 0))
 
             x1, y1, x2, y2 = self._get_pixel_coords(ann, w, h)
@@ -442,7 +464,27 @@ class ImageCanvas(QLabel):
                 self._update_corner(img_x, img_y)
                 self._invalidate()
             elif self.drawing:
-                self.draw_end = (img_x, img_y)
+                if self._aspect_ratio and self.draw_start:
+                    # 锁定长宽比
+                    sx, sy = self.draw_start
+                    dw = img_x - sx
+                    dh = img_y - sy
+                    w = abs(dw)
+                    h = abs(dh)
+                    if w > 5 and h > 5:
+                        # 以较大的边为基准，调整另一边
+                        if w / max(h, 1) > self._aspect_ratio:
+                            w = h * self._aspect_ratio
+                        else:
+                            h = w / self._aspect_ratio
+                        self.draw_end = (
+                            int(sx + w if dw >= 0 else sx - w),
+                            int(sy + h if dh >= 0 else sy - h)
+                        )
+                    else:
+                        self.draw_end = (img_x, img_y)
+                else:
+                    self.draw_end = (img_x, img_y)
                 self._invalidate()
             elif self.selected_bbox_idx >= 0 and self.drag_start_pos:
                 dx = img_x - self.drag_start_pos[0]
@@ -631,11 +673,17 @@ class ImageCanvas(QLabel):
             self._invalidate()
 
         elif key == Qt.Key_C and mods == Qt.ControlModifier:
-            self.copyRequested.emit()
+            if mods & Qt.ShiftModifier:
+                self.copyPrevRequested.emit()
+            else:
+                self.copyRequested.emit()
         elif key == Qt.Key_V and mods == Qt.ControlModifier:
             self.pasteRequested.emit()
         elif key == Qt.Key_D and mods == Qt.ControlModifier:
             self.duplicateRequested.emit()
+
+        elif key == Qt.Key_X and not mods:
+            self.discardRequested.emit()
 
         elif key == Qt.Key_F and mods == Qt.ControlModifier:
             if mods & Qt.ShiftModifier:

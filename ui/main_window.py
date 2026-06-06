@@ -490,6 +490,13 @@ class AnnotationWidget(QWidget):
         self.zoom_label.setToolTip("点击重置缩放 (Ctrl+0)")
         self.zoom_label.clicked.connect(lambda: self.canvas.zoom_reset())
 
+        # 长宽比锁定
+        ratio_label = QLabel("比例:")
+        self.ratio_combo = QComboBox()
+        self.ratio_combo.addItems(["自由", "1:1", "4:3", "16:9", "3:4", "9:16", "2:1", "1:2"])
+        self.ratio_combo.setToolTip("绘制时锁定长宽比（车牌/人脸/表计等固定比例目标）")
+        self.ratio_combo.currentIndexChanged.connect(self._on_ratio_changed)
+
         self.mode_label = QLabel("📝 标注模式")
 
         self.auto_save_cb = QCheckBox("自动保存")
@@ -499,6 +506,8 @@ class AnnotationWidget(QWidget):
         toolbar.addWidget(fit_btn)
         toolbar.addWidget(fitw_btn)
         toolbar.addWidget(self.zoom_label)
+        toolbar.addWidget(ratio_label)
+        toolbar.addWidget(self.ratio_combo)
         toolbar.addSpacing(10)
         toolbar.addWidget(self.mode_label)
         toolbar.addStretch()
@@ -518,6 +527,8 @@ class AnnotationWidget(QWidget):
         self.canvas.microMoveRequested.connect(self._micro_move)
         self.canvas.zoomChanged.connect(self._on_zoom_changed)
         self.canvas.panModeChanged.connect(self._on_pan_mode_changed)
+        self.canvas.copyPrevRequested.connect(self._copy_from_prev)
+        self.canvas.discardRequested.connect(self._discard_current)
         center_layout.addWidget(self.canvas)
 
         # 底部导航
@@ -557,6 +568,15 @@ class AnnotationWidget(QWidget):
         anno_group = QGroupBox("当前图片标注")
         anno_layout = QVBoxLayout(anno_group)
 
+        # 标签过滤
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("显示:"))
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem("全部", -1)
+        self.filter_combo.currentIndexChanged.connect(self._on_filter_changed)
+        filter_layout.addWidget(self.filter_combo)
+        anno_layout.addLayout(filter_layout)
+
         self.stats_label = QLabel("统计: 无")
         self.stats_label.setObjectName("subtitleLabel")
         anno_layout.addWidget(self.stats_label)
@@ -580,13 +600,13 @@ class AnnotationWidget(QWidget):
         tip_group = QGroupBox("操作提示")
         tip_layout = QVBoxLayout(tip_group)
         tips = [
-            "左键拖拽: 绘制标注框  四角拖拽: 缩放框",
-            "左键点击: 选中/拖拽标注框",
-            "右键/DblClick: 编辑类别菜单",
-            "M: 拖拽模式  N: 标注模式",
+            "左键拖拽: 绘制  四角拖拽: 缩放框",
+            "左键点击: 选中/拖拽  右键/DblClick: 编辑类别",
+            "M: 拖拽模式  N: 标注模式  X: 废弃图片",
             "A/D: 切换图片  Delete: 删除框",
             "Ctrl+F/0: 适应窗口/重置缩放",
             "方向键: 微移  Ctrl+C/V/D: 复制/粘贴",
+            "Ctrl+Shift+C: 复制上一帧框",
         ]
         for tip in tips:
             tip_layout.addWidget(QLabel(tip))
@@ -618,6 +638,9 @@ class AnnotationWidget(QWidget):
         self._pan_m_sc.activated.connect(self._enter_pan_mode)
         self._pan_n_sc = QShortcut(Qt.Key_N, self)
         self._pan_n_sc.activated.connect(self._enter_anno_mode)
+
+        self._copy_prev_sc = QShortcut(Qt.Key_C | Qt.SHIFT | Qt.CTRL, self)
+        self._copy_prev_sc.activated.connect(self._copy_from_prev)
 
     # ── 数据同步 ─────────────────────────────────────────────
 
@@ -756,6 +779,18 @@ class AnnotationWidget(QWidget):
             self.class_list.addItem(cls_name)
             self.cur_cls_combo.addItem(cls_name)
         self.canvas.set_class_names(self.manager.classes)
+
+        # 更新过滤下拉框
+        cur_filter = self.filter_combo.currentData()
+        self.filter_combo.blockSignals(True)
+        self.filter_combo.clear()
+        self.filter_combo.addItem("全部", -1)
+        for i, cls_name in enumerate(self.manager.classes):
+            self.filter_combo.addItem(cls_name, i)
+        # 恢复之前的过滤选择
+        idx = self.filter_combo.findData(cur_filter)
+        self.filter_combo.setCurrentIndex(max(0, idx))
+        self.filter_combo.blockSignals(False)
 
         # 单类别模式
         if len(self.manager.classes) == 1:
@@ -929,6 +964,32 @@ class AnnotationWidget(QWidget):
 
     def _on_pan_mode_changed(self, enabled):
         self.mode_label.setText("🖐 拖拽模式" if enabled else "📝 标注模式")
+
+    def _on_ratio_changed(self, idx):
+        """长宽比锁定"""
+        ratios = [None, 1.0, 4/3, 16/9, 3/4, 9/16, 2.0, 0.5]
+        if idx < len(ratios):
+            self.canvas.set_aspect_ratio(ratios[idx])
+
+    def _on_filter_changed(self, idx):
+        """标签过滤"""
+        class_id = self.filter_combo.currentData()
+        self.canvas.set_filter_class(class_id)
+
+    def _copy_from_prev(self):
+        """复制上一帧标注"""
+        if self.manager.copy_from_prev_image():
+            self._sync_canvas()
+            self.canvas._invalidate()
+            self._refresh_anno_table()
+
+    def _discard_current(self):
+        """标记当前图片为废弃"""
+        self.manager.discard_current_image()
+        QMessageBox.information(
+            self, "已标记",
+            f"当前图片已加入废弃列表: discarded.txt"
+        )
 
 
 # ── 数据集验证对话框 ────────────────────────────────────────

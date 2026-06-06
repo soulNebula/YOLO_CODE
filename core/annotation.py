@@ -251,6 +251,44 @@ class AnnotationManager:
             count += 1
         return count
 
+    def copy_from_prev_image(self):
+        """复制上一张图片的标注到当前图片（视频抽帧标注）"""
+        if not self.image_list or self.current_index <= 0:
+            return False
+        prev_path = self.image_list[self.current_index - 1]
+        prev_annos = self.annotations.get(prev_path, [])
+        if not prev_annos:
+            return False
+        for ann in prev_annos:
+            bbox = dict(ann)
+            if 'x1' not in bbox and self.current_image is not None:
+                h, w = self.current_image.shape[:2]
+                x1, y1, x2, y2 = self._yolo_to_pixel(bbox, w, h)
+                bbox.update({'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2})
+            if self.current_image_path not in self.annotations:
+                self.annotations[self.current_image_path] = []
+            self.annotations[self.current_image_path].append(bbox)
+        self.mark_dirty()
+        return True
+
+    def discard_current_image(self):
+        """标记当前图片为废弃（写入 discarded.txt）"""
+        if not self.dataset_dir or not self.current_image_path:
+            return
+        discard_file = os.path.join(self.dataset_dir, 'discarded.txt')
+        img_name = os.path.basename(self.current_image_path)
+        # 检查是否已在列表中
+        if os.path.isfile(discard_file):
+            with open(discard_file, 'r', encoding='utf-8') as f:
+                existing = {line.strip() for line in f}
+        else:
+            existing = set()
+        if img_name in existing:
+            return  # 已在废弃列表
+        with open(discard_file, 'a', encoding='utf-8') as f:
+            f.write(img_name + '\n')
+        return True
+
     # ── 类别管理 ─────────────────────────────────────────────
 
     def delete_class(self, index):
