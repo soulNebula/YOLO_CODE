@@ -382,16 +382,30 @@ class TrainingWorker(QThread):
             device = params.get('device', 'auto')
             workers = params.get('workers', 4)
             pretrained = params.get('pretrained', True)
+            optimizer = params.get('optimizer', 'auto')
+            close_mosaic = params.get('close_mosaic', 10)
+            rect = params.get('rect', False)
+            seed = params.get('seed', 0)
+            augment = params.get('augment', True)
+            cos_lr = params.get('cos_lr', False)
+            warmup_epochs = params.get('warmup_epochs', 3)
+            extra_args = params.get('extra_args', {})
 
             resume = params.get('resume', False)
             resume_ckpt = params.get('resume_checkpoint', None)
             project = params.get('project', 'runs')
             name = params.get('name', 'train')
 
+            opt_str = f"opt={optimizer}" if optimizer != 'auto' else ''
+            seed_str = f"seed={seed}" if seed > 0 else ''
+            rect_str = "rect" if rect else ""
+            extra = " ".join(filter(None, [opt_str, seed_str, rect_str]))
             self.log.emit(f"开始训练: {model_name}")
             self.log.emit(f"数据集: {data_yaml}")
             self.log.emit(f"Epochs: {epochs} | Batch: {batch_size} | ImgSize: {img_size} | LR: {lr}")
-            self.log.emit(f"设备: {device} | Workers: {workers}")
+            self.log.emit(f"设备: {device} | Workers: {workers} | warmup={warmup_epochs}")
+            if extra:
+                self.log.emit(f"附加: {extra}")
             self.log.emit(f"输出目录: {project}/{name}")
 
             if resume and resume_ckpt:
@@ -409,21 +423,35 @@ class TrainingWorker(QThread):
             # 注册回调 — 每轮结束通知 UI
             model.add_callback("on_train_epoch_end", self._on_epoch_end)
 
+            # 构建训练参数
+            train_args = {
+                'data': data_yaml,
+                'epochs': epochs,
+                'batch': batch_size,
+                'imgsz': img_size,
+                'lr0': lr,
+                'device': device,
+                'workers': workers,
+                'project': project,
+                'name': name,
+                'exist_ok': False,
+                'resume': resume,
+                'verbose': False,
+                'optimizer': optimizer,
+                'close_mosaic': close_mosaic,
+                'warmup_epochs': warmup_epochs,
+                'cos_lr': cos_lr,
+                'augment': augment,
+            }
+            if rect:
+                train_args['rect'] = True
+            if seed > 0:
+                train_args['seed'] = seed
+            if extra_args:
+                train_args.update(extra_args)
+
             try:
-                model.train(
-                    data=data_yaml,
-                    epochs=epochs,
-                    batch=batch_size,
-                    imgsz=img_size,
-                    lr0=lr,
-                    device=device,
-                    workers=workers,
-                    project=project,
-                    name=name,
-                    exist_ok=False,
-                    resume=resume,
-                    verbose=False,
-                )
+                model.train(**train_args)
             except KeyboardInterrupt:
                 self.log.emit("⚠ 训练被用户中断")
                 self.finished.emit(self.best_metrics)

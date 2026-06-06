@@ -1278,11 +1278,23 @@ class TrainingWidget(QWidget):
         params_layout.addWidget(QLabel("批次大小:"), 0, 2)
         params_layout.addWidget(self.batch_spin, 0, 3)
 
+        # img size: combo + custom
+        img_label = QLabel("图片尺寸:")
+        self.imgsz_combo = QComboBox()
+        self.imgsz_combo.addItems(['640', '960', '1280', '自定义'])
+        self.imgsz_combo.setCurrentText(str(defaults['img_size']))
         self.imgsz_spin = QSpinBox()
         self.imgsz_spin.setRange(32, 2048)
         self.imgsz_spin.setValue(defaults['img_size'])
-        params_layout.addWidget(QLabel("图片尺寸:"), 1, 0)
-        params_layout.addWidget(self.imgsz_spin, 1, 1)
+        self.imgsz_spin.setVisible(False)
+        self.imgsz_combo.currentTextChanged.connect(
+            lambda t: self.imgsz_spin.setVisible(t == '自定义')
+        )
+        img_row = QHBoxLayout()
+        img_row.addWidget(self.imgsz_combo)
+        img_row.addWidget(self.imgsz_spin)
+        params_layout.addWidget(img_label, 1, 0)
+        params_layout.addLayout(img_row, 1, 1)
 
         self.lr_spin = QDoubleSpinBox()
         self.lr_spin.setRange(0.0001, 1.0)
@@ -1303,20 +1315,63 @@ class TrainingWidget(QWidget):
         params_layout.addWidget(QLabel("训练设备:"), 2, 2)
         params_layout.addWidget(self.device_combo, 2, 3)
 
+        # 优化器
+        params_layout.addWidget(QLabel("优化器:"), 3, 0)
+        self.optimizer_combo = QComboBox()
+        self.optimizer_combo.addItems(['auto', 'SGD', 'Adam', 'AdamW'])
+        self.optimizer_combo.setCurrentText(defaults.get('optimizer', 'auto'))
+        params_layout.addWidget(self.optimizer_combo, 3, 1)
+
         self.workers_spin = QSpinBox()
         self.workers_spin.setRange(0, 32)
         self.workers_spin.setValue(defaults['workers'])
-        params_layout.addWidget(QLabel("工作线程:"), 3, 0)
-        params_layout.addWidget(self.workers_spin, 3, 1)
+        params_layout.addWidget(QLabel("工作线程:"), 3, 2)
+        params_layout.addWidget(self.workers_spin, 3, 3)
 
+        # close_mosaic + seed
+        params_layout.addWidget(QLabel("关闭Mosaic:"), 4, 0)
+        self.mosaic_spin = QSpinBox()
+        self.mosaic_spin.setRange(0, 100)
+        self.mosaic_spin.setValue(defaults.get('close_mosaic', 10))
+        self.mosaic_spin.setToolTip("最后 N 轮关闭 Mosaic 增强（0=不关闭）")
+        params_layout.addWidget(self.mosaic_spin, 4, 1)
+
+        params_layout.addWidget(QLabel("随机种子:"), 4, 2)
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(0, 99999)
+        self.seed_spin.setValue(0)
+        self.seed_spin.setToolTip("固定随机种子（0=随机），确保可复现结果")
+        self.seed_spin.setSpecialValueText("随机")
+        params_layout.addWidget(self.seed_spin, 4, 3)
+
+        # rect + augment + cos_lr
         self.augment_check = QCheckBox("数据增强")
         self.augment_check.setChecked(True)
-        params_layout.addWidget(self.augment_check, 3, 2)
+        params_layout.addWidget(self.augment_check, 5, 0)
 
         self.cos_lr_check = QCheckBox("余弦学习率衰减")
-        params_layout.addWidget(self.cos_lr_check, 3, 3)
+        params_layout.addWidget(self.cos_lr_check, 5, 1)
+
+        self.rect_check = QCheckBox("矩形训练")
+        self.rect_check.setToolTip("矩形推理训练（减少填充，加速训练）")
+        params_layout.addWidget(self.rect_check, 5, 2)
 
         config_layout.addWidget(params_group)
+
+        # 高级设置（可折叠/展开）
+        self.advanced_group = QGroupBox("高级设置（自定义 args）")
+        self.advanced_group.setCheckable(True)
+        self.advanced_group.setChecked(False)
+        adv_layout = QVBoxLayout(self.advanced_group)
+        self.advanced_args_edit = QTextEdit()
+        self.advanced_args_edit.setMaximumHeight(80)
+        self.advanced_args_edit.setPlaceholderText(
+            "自定义 YOLO 参数，每行一个 key=value:\n"
+            "例:  lr_factor=0.01  label_smoothing=0.1\n"
+            "留空表示不传入额外参数"
+        )
+        adv_layout.addWidget(self.advanced_args_edit)
+        config_layout.addWidget(self.advanced_group)
 
         btn_row = QHBoxLayout()
         self.train_btn = QPushButton("▶ 开始训练")
@@ -1720,12 +1775,16 @@ class TrainingWidget(QWidget):
         if self.cpu_radio.isChecked():
             device = 'cpu'
 
+        # 图片尺寸
+        img_sz_text = self.imgsz_combo.currentText()
+        img_size = self.imgsz_spin.value() if img_sz_text == '自定义' else int(img_sz_text)
+
         params = {
             'model': self.model_combo.currentText(),
             'data_yaml': data_yaml,
             'epochs': self.epochs_spin.value(),
             'batch_size': self.batch_spin.value(),
-            'img_size': self.imgsz_spin.value(),
+            'img_size': img_size,
             'learning_rate': self.lr_spin.value(),
             'warmup_epochs': self.warmup_spin.value(),
             'device': device,
@@ -1733,9 +1792,32 @@ class TrainingWidget(QWidget):
             'pretrained': self.pretrained_check.isChecked(),
             'augment': self.augment_check.isChecked(),
             'cos_lr': self.cos_lr_check.isChecked(),
+            'optimizer': self.optimizer_combo.currentText(),
+            'close_mosaic': self.mosaic_spin.value(),
+            'rect': self.rect_check.isChecked(),
+            'seed': self.seed_spin.value(),
             'project': 'runs',
             'name': 'train',
         }
+
+        # 解析自定义 args
+        custom_text = self.advanced_args_edit.toPlainText().strip()
+        if custom_text:
+            extra = {}
+            for line in custom_text.split('\n'):
+                line = line.strip()
+                if '=' in line and not line.startswith('#'):
+                    k, v = line.split('=', 1)
+                    k, v = k.strip(), v.strip()
+                    try:
+                        v = float(v)
+                        if v == int(v):
+                            v = int(v)
+                    except ValueError:
+                        pass
+                    extra[k] = v
+            if extra:
+                params['extra_args'] = extra
 
         # ── 检测可继续的训练 ──
         last_pt, best_pt, prev_dir = find_latest_checkpoint('runs', 'train')
@@ -1867,13 +1949,19 @@ class TrainingWidget(QWidget):
         with open(p, 'w', encoding='utf-8') as f:
             f.write(f"# YOLO CODE 训练日志 — {ts}\n")
             f.write(f"# 数据集: {self.data_yaml_edit.text()}\n")
+            img_sz_text = self.imgsz_combo.currentText()
+            img_sz = self.imgsz_spin.value() if img_sz_text == '自定义' else img_sz_text
             f.write(f"# 模型: {self.model_combo.currentText()}\n")
             f.write(f"# Epochs: {self.epochs_spin.value()} | "
                     f"Batch: {self.batch_spin.value()} | "
-                    f"ImgSz: {self.imgsz_spin.value()} | "
-                    f"LR: {self.lr_spin.value()}\n")
+                    f"ImgSz: {img_sz} | "
+                    f"LR: {self.lr_spin.value()} | "
+                    f"Opt: {self.optimizer_combo.currentText()} | "
+                    f"Seed: {self.seed_spin.value()}\n")
             f.write(f"# 设备: {self.device_combo.currentText()} | "
-                    f"Workers: {self.workers_spin.value()}\n")
+                    f"Workers: {self.workers_spin.value()} | "
+                    f"Mosaic: {self.mosaic_spin.value()} | "
+                    f"Rect: {self.rect_check.isChecked()}\n")
             metrics = self.manager.get_training_metrics()
             best = metrics.get('best_metrics', {})
             if best:
