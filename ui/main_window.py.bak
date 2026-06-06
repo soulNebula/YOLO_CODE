@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import (
     QPixmap, QImage, QPainter, QPen, QColor, QFont,
-    QIcon, QFontDatabase, QPalette, QCursor
+    QIcon, QFontDatabase, QPalette
 )
 import numpy as np
 import cv2
@@ -32,7 +32,6 @@ from utils.helpers import (
     get_yolo_classes_from_dataset, save_yolo_dataset_config,
     get_supported_models, get_default_training_params
 )
-from utils.validator import validate_dataset, auto_fix_issues
 from core.training import get_pip_mirrors
 
 
@@ -388,22 +387,286 @@ NavButton:checked {
 
 
 
+class ImageCanvas(QLabel):
+    """图片显示和标注画布"""
+    zoomChanged = pyqtSignal(float)
+    mouseMoved = pyqtSignal(int, int)
+    bboxDrawn = pyqtSignal(int, int, int, int)  # x1, y1, x2, y2
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(640, 480)
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet("background-color: #fafafa; border: 2px solid #e0e0e0; border-radius: 4px;")
+        self.setMouseTracking(True)
+
+        self.original_image = None
+        self.display_image = None
+        self._render_buffer = None  # 保持numpy数组引用防止QImage悬空指针
+        self.zoom = 1.0
+        self.offset_x = 0
+        self.offset_y = 0
+
+        # 标注相关
+        self.annotations = []  # [{class_id, cx, cy, w, h, x1, y1, x2, y2}]
+        self.class_names = []
+        self.colors = {}
+
+        # 绘制状态
+        self.drawing = False
+        self.draw_start = None
+        self.draw_end = None
+        self.current_class_id = 0
+
+        # 选中状态
+        self.selected_bbox_idx = -1
+        self.dragging = False
+        self.drag_corner = None
+        self.drag_start_pos = None
+
+        self.setCursor(Qt.ArrowCursor)
+
+    def set_class_names(self, names):
+        self.class_names = names
+
+    def set_colors(self, colors):
+        self.colors = colors
+
+    def set_current_class(self, class_id):
+        self.current_class_id = class_id
+
+    def load_image(self, img_array, annotations=None, zoom_fit=True):
+        """加载图片"""
+        self.original_image = img_array.copy() if img_array is not None else None
+        self.annotations = annotations or []
+
+        if zoom_fit and self.original_image is not None:
+            h, w = self.original_image.shape[:2]
+            cw = self.width()
+            ch = self.height()
+            self.zoom = min(cw / w, ch / h) * 0.9
+
+        self.offset_x = 0
+        self.offset_y = 0
+        self.selected_bbox_idx = -1
+        self._render()
+
+    def _render(self):
+        """渲染当前画面"""
+        if self.original_image is None:
+            self.display_image = None
+            self.setText("请加载图片")
+            return
+        try:
+            img = self.original_image.copy()
+        except Exception:
+            return
+        h, w = img.shape[:2]
+
+        # 绘制标注框
+        for idx, ann in enumerate(self.annotations):
+            cls_id = ann.get('class_id', 0)
+            cls_name = self.class_names[cls_id] if cls_id < len(self.class_names) else f"cls_{cls_id}"
+            color = self.colors.get(cls_id, (0, 255, 0))
+
+            if 'x1' in ann and 'y1' in ann:
+                x1, y1 = int(ann['x1']), int(ann['y1'])
+                x2, y2 = int(ann['x2']), int(ann['y2'])
+            else:
+                x1 = int((ann['cx'] - ann['w'] / 2) * w)
+                y1 = int((ann['cy'] - ann['h'] / 2) * h)
+                x2 = int((ann['cx'] + ann['w'] / 2) * w)
+                y2 = int((ann['cy'] + ann['h'] / 2) * h)
+
+            thick = 3 if idx == self.selected_bbox_idx else 2
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, thick)
+
+            # 标签
+            label = f"{cls_name}"
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.rectangle(img, (x1, y1 - th - 8), (x1 + tw + 6, y1), color, -1)
+            cv2.putText(img, label, (x1 + 3, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+
+            if idx == self.selected_bbox_idx:
+                cv2.rectangle(img, (x1 - 2, y1 - 2), (x2 + 2, y1 + 2), (255, 255, 0), 1)
+
+        # 绘制正在拖拽的框
+        if self.drawing and self.draw_start and self.draw_end:
+            x1, y1 = self.draw_start
+            x2, y2 = self.draw_end
+            color = self.colors.get(self.current_class_id, (0, 107, 255))
+            cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+            cv2.line(img, (x1, y1), (x1 + 20, y1), color, 3)
+            cv2.line(img, (x1, y1), (x1, y1 + 20), color, 3)
+
+        # 缩放和显示
+        new_w = int(w * self.zoom)
+        new_h = int(h * self.zoom)
+        if new_w > 0 and new_h > 0:
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        # 保持引用防止QImage悬空指针（annotation.py已转为RGB）
+        img_rgb = np.ascontiguousarray(img)
+        self._render_buffer = img_rgb
+        h2, w2 = self._render_buffer.shape[:2]
+        q_img = QImage(self._render_buffer.data, w2, h2, w2 * 3, QImage.Format_RGB888)
+        self.display_image = img
+        self.setPixmap(QPixmap.fromImage(q_img))
+
+    def _to_image_coords(self, pos):
+        """窗口坐标转图片坐标"""
+        try:
+            if self.original_image is None or self.display_image is None:
+                return None, None
+            dh, dw = self.display_image.shape[:2]
+            oh, ow = self.original_image.shape[:2]
+            if dw <= 0 or dh <= 0 or ow <= 0 or oh <= 0 or self.zoom <= 0:
+                return None, None
+
+            x = int((pos.x() - self.offset_x - (self.width() - dw) // 2) / self.zoom)
+            y = int((pos.y() - self.offset_y - (self.height() - dh) // 2) / self.zoom)
+            x = max(0, min(ow - 1, x))
+            y = max(0, min(oh - 1, y))
+            return x, y
+        except Exception:
+            return None, None
+
+    def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton or self.original_image is None:
+            return
+        try:
+            img_x, img_y = self._to_image_coords(event.pos())
+            if img_x is None:
+                return
+
+            self.selected_bbox_idx = -1
+            for idx, ann in reversed(list(enumerate(self.annotations))):
+                h, w = self.original_image.shape[:2]
+                if 'x1' in ann:
+                    x1, y1, x2, y2 = ann['x1'], ann['y1'], ann['x2'], ann['y2']
+                else:
+                    x1 = int((ann['cx'] - ann['w'] / 2) * w)
+                    y1 = int((ann['cy'] - ann['h'] / 2) * h)
+                    x2 = int((ann['cx'] + ann['w'] / 2) * w)
+                    y2 = int((ann['cy'] + ann['h'] / 2) * h)
+
+                if x1 <= img_x <= x2 and y1 <= img_y <= y2:
+                    self.selected_bbox_idx = idx
+                    self.drag_start_pos = (img_x, img_y)
+                    self.setCursor(Qt.ClosedHandCursor)
+                    break
+
+            if self.selected_bbox_idx == -1:
+                self.drawing = True
+                self.draw_start = (img_x, img_y)
+                self.draw_end = (img_x, img_y)
+                self.setCursor(Qt.CrossCursor)
+
+            self._render()
+        except Exception:
+            pass
+
+    def mouseMoveEvent(self, event):
+        if self.original_image is None:
+            return
+        try:
+            img_x, img_y = self._to_image_coords(event.pos())
+            if img_x is not None:
+                self.mouseMoved.emit(img_x, img_y)
+
+            if self.drawing:
+                self.draw_end = (img_x, img_y)
+                self._render()
+            elif self.selected_bbox_idx >= 0 and self.drag_start_pos:
+                h, w = self.original_image.shape[:2]
+                dx = img_x - self.drag_start_pos[0]
+                dy = img_y - self.drag_start_pos[1]
+                ann = self.annotations[self.selected_bbox_idx]
+                if 'x1' in ann:
+                    ann['x1'] += dx
+                    ann['y1'] += dy
+                    ann['x2'] += dx
+                    ann['y2'] += dy
+                self.drag_start_pos = (img_x, img_y)
+                self._render()
+            else:
+                hovering = False
+                for ann in self.annotations:
+                    h, w = self.original_image.shape[:2]
+                    if 'x1' in ann:
+                        x1, y1, x2, y2 = ann['x1'], ann['y1'], ann['x2'], ann['y2']
+                    else:
+                        x1 = int((ann['cx'] - ann['w'] / 2) * w)
+                        y1 = int((ann['cy'] - ann['h'] / 2) * h)
+                        x2 = int((ann['cx'] + ann['w'] / 2) * w)
+                        y2 = int((ann['cy'] + ann['h'] / 2) * h)
+                    if x1 <= img_x <= x2 and y1 <= img_y <= y2:
+                        hovering = True
+                        break
+                self.setCursor(Qt.PointingHandCursor if hovering else Qt.CrossCursor)
+        except Exception:
+            pass
+
+    def mouseReleaseEvent(self, event):
+        try:
+            if self.drawing:
+                self.drawing = False
+                if self.draw_start and self.draw_end:
+                    x1, y1 = self.draw_start
+                    x2, y2 = self.draw_end
+                    if abs(x2 - x1) > 5 and abs(y2 - y1) > 5:
+                        self.bboxDrawn.emit(
+                            min(x1, x2), min(y1, y2),
+                            max(x1, x2), max(y1, y2)
+                        )
+                self.draw_start = None
+                self.draw_end = None
+                self.setCursor(Qt.CrossCursor)
+                self._render()
+            else:
+                self.setCursor(Qt.CrossCursor)
+
+            self.drag_start_pos = None
+        except Exception:
+            pass
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if delta > 0:
+            self.zoom *= 1.1
+        else:
+            self.zoom /= 1.1
+        self.zoom = max(0.1, min(10.0, self.zoom))
+        self.zoomChanged.emit(self.zoom)
+        self._render()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete and self.selected_bbox_idx >= 0:
+            if 0 <= self.selected_bbox_idx < len(self.annotations):
+                self.annotations.pop(self.selected_bbox_idx)
+                self.selected_bbox_idx = -1
+                self._render()
+        elif event.key() == Qt.Key_Escape:
+            self.drawing = False
+            self.draw_start = None
+            self.draw_end = None
+            self.selected_bbox_idx = -1
+            self._render()
+
+
 class AnnotationWidget(QWidget):
-    """标注页面 —— 控制器层，所有数据变更通过 AnnotationManager"""
+    """标注页面"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.manager = AnnotationManager()
-        self.auto_save_enabled = True
         self._init_ui()
-
-    # ── UI 初始化 ────────────────────────────────────────────
 
     def _init_ui(self):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # ── 左侧面板 ──
+        # 左侧面板 - 文件管理
         left_panel = QWidget()
         left_panel.setFixedWidth(280)
         left_layout = QVBoxLayout(left_panel)
@@ -412,6 +675,7 @@ class AnnotationWidget(QWidget):
         # 数据集目录
         dir_group = QGroupBox("数据集目录")
         dir_layout = QVBoxLayout(dir_group)
+
         dir_btn_layout = QHBoxLayout()
         self.dir_label = QLineEdit()
         self.dir_label.setReadOnly(True)
@@ -422,14 +686,17 @@ class AnnotationWidget(QWidget):
         dir_btn_layout.addWidget(dir_btn)
         dir_layout.addLayout(dir_btn_layout)
 
+        # 文件列表
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(["图片列表"])
         self.file_tree.itemClicked.connect(self._on_file_selected)
         dir_layout.addWidget(self.file_tree)
 
+        # 图片统计
         self.img_count_label = QLabel("图片数量: 0")
         self.img_count_label.setObjectName("subtitleLabel")
         dir_layout.addWidget(self.img_count_label)
+
         left_layout.addWidget(dir_group)
 
         # 类别管理
@@ -457,70 +724,30 @@ class AnnotationWidget(QWidget):
         cls_btn_layout.addWidget(del_cls_btn)
         cls_btn_layout.addWidget(save_cls_btn)
         class_layout.addLayout(cls_btn_layout)
+
         left_layout.addWidget(class_group)
 
-        # 保存按钮
+        # 保存标注
         save_anno_btn = QPushButton("保存所有标注")
         save_anno_btn.clicked.connect(self._save_annotations)
         left_layout.addWidget(save_anno_btn)
+
         left_layout.addStretch()
 
-        # ── 中间面板 ──
+        # 中间面板 - 画布
         center_panel = QWidget()
         center_layout = QVBoxLayout(center_panel)
         center_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 工具栏
-        toolbar = QHBoxLayout()
-
-        fit_btn = QPushButton("适应窗口")
-        fit_btn.setToolTip("适应窗口 (Ctrl+F)")
-        fit_btn.clicked.connect(lambda: self.canvas.zoom_to_fit())
-
-        fitw_btn = QPushButton("适应宽度")
-        fitw_btn.setToolTip("适应宽度 (Ctrl+Shift+F)")
-        fitw_btn.clicked.connect(lambda: self.canvas.zoom_to_width())
-
-        self.zoom_label = QPushButton("100%")
-        self.zoom_label.setFlat(True)
-        self.zoom_label.setToolTip("点击重置缩放 (Ctrl+0)")
-        self.zoom_label.clicked.connect(lambda: self.canvas.zoom_reset())
-
-        self.mode_label = QLabel("📝 标注模式")
-
-        self.auto_save_cb = QCheckBox("自动保存")
-        self.auto_save_cb.setChecked(True)
-        self.auto_save_cb.stateChanged.connect(self._toggle_auto_save)
-
-        toolbar.addWidget(fit_btn)
-        toolbar.addWidget(fitw_btn)
-        toolbar.addWidget(self.zoom_label)
-        toolbar.addSpacing(10)
-        toolbar.addWidget(self.mode_label)
-        toolbar.addStretch()
-        toolbar.addWidget(self.auto_save_cb)
-        center_layout.addLayout(toolbar)
-
-        # 画布
         self.canvas = ImageCanvas()
         self.canvas.bboxDrawn.connect(self._on_bbox_drawn)
-        self.canvas.bboxDeleteRequested.connect(self._on_bbox_delete_requested)
-        self.canvas.bboxMoveFinished.connect(self._on_bbox_move_finished)
-        self.canvas.bboxSelected.connect(self._on_bbox_selected)
-        self.canvas.contextMenuRequested.connect(self._show_context_menu)
-        self.canvas.copyRequested.connect(self._copy_bboxes)
-        self.canvas.pasteRequested.connect(self._paste_bboxes)
-        self.canvas.duplicateRequested.connect(self._duplicate_bbox)
-        self.canvas.microMoveRequested.connect(self._micro_move)
-        self.canvas.zoomChanged.connect(self._on_zoom_changed)
-        self.canvas.panModeChanged.connect(self._on_pan_mode_changed)
         center_layout.addWidget(self.canvas)
 
         # 底部导航
         nav_layout = QHBoxLayout()
-        self.prev_btn = QPushButton("◀ 上一张 (A)")
+        self.prev_btn = QPushButton("◀ 上一张")
         self.prev_btn.clicked.connect(self._prev_image)
-        self.next_btn = QPushButton("下一张 (D) ▶")
+        self.next_btn = QPushButton("下一张 ▶")
         self.next_btn.clicked.connect(self._next_image)
         self.img_info_label = QLabel("0 / 0")
         self.img_info_label.setAlignment(Qt.AlignCenter)
@@ -530,7 +757,7 @@ class AnnotationWidget(QWidget):
         nav_layout.addWidget(self.next_btn)
         center_layout.addLayout(nav_layout)
 
-        # ── 右侧面板 ──
+        # 右侧面板 - 标注属性
         right_panel = QWidget()
         right_panel.setFixedWidth(280)
         right_layout = QVBoxLayout(right_panel)
@@ -542,24 +769,11 @@ class AnnotationWidget(QWidget):
         self.cur_cls_combo = QComboBox()
         self.cur_cls_combo.currentIndexChanged.connect(self._on_cur_class_changed)
         cur_cls_layout.addWidget(self.cur_cls_combo)
-
-        self.single_class_label = QLabel()
-        self.single_class_label.setObjectName("subtitleLabel")
-        self.single_class_label.hide()
-        cur_cls_layout.addWidget(self.single_class_label)
         right_layout.addWidget(cur_cls_group)
 
         # 标注列表
         anno_group = QGroupBox("当前图片标注")
         anno_layout = QVBoxLayout(anno_group)
-
-        self.stats_label = QLabel("统计: 无")
-        self.stats_label.setObjectName("subtitleLabel")
-        anno_layout.addWidget(self.stats_label)
-
-        self.save_indicator = QLabel("🟢 已保存")
-        anno_layout.addWidget(self.save_indicator)
-
         self.anno_table = QTableWidget()
         self.anno_table.setColumnCount(3)
         self.anno_table.setHorizontalHeaderLabels(["类别", "宽", "高"])
@@ -576,20 +790,19 @@ class AnnotationWidget(QWidget):
         tip_group = QGroupBox("操作提示")
         tip_layout = QVBoxLayout(tip_group)
         tips = [
-            "左键拖拽: 绘制标注框  四角拖拽: 缩放框",
-            "左键点击: 选中/拖拽标注框",
-            "右键/DblClick: 编辑类别菜单",
-            "M: 拖拽模式  N: 标注模式",
-            "A/D: 切换图片  Delete: 删除框",
-            "Ctrl+F/0: 适应窗口/重置缩放",
-            "方向键: 微移  Ctrl+C/V/D: 复制/粘贴",
+            "🖱 左键拖拽: 绘制标注框",
+            "🖱 点击框: 选中标注框",
+            "🖱 拖拽框: 移动标注框",
+            "⌨ Delete: 删除选中标注",
+            "🖱 滚轮: 缩放图片",
         ]
         for tip in tips:
             tip_layout.addWidget(QLabel(tip))
         right_layout.addWidget(tip_group)
+
         right_layout.addStretch()
 
-        # ── 组合 ──
+        # 组合
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_panel)
         splitter.addWidget(center_panel)
@@ -600,37 +813,6 @@ class AnnotationWidget(QWidget):
 
         layout.addWidget(splitter)
 
-        # ── 快捷键 ──
-        self._prev_sc = QShortcut(Qt.Key_A, self)
-        self._prev_sc.activated.connect(self._prev_image)
-        self._prev_sc2 = QShortcut(Qt.Key_Left, self)
-        self._prev_sc2.activated.connect(self._prev_image)
-        self._next_sc = QShortcut(Qt.Key_D, self)
-        self._next_sc.activated.connect(self._next_image)
-        self._next_sc2 = QShortcut(Qt.Key_Right, self)
-        self._next_sc2.activated.connect(self._next_image)
-
-        self._pan_m_sc = QShortcut(Qt.Key_M, self)
-        self._pan_m_sc.activated.connect(self._enter_pan_mode)
-        self._pan_n_sc = QShortcut(Qt.Key_N, self)
-        self._pan_n_sc.activated.connect(self._enter_anno_mode)
-
-    # ── 数据同步 ─────────────────────────────────────────────
-
-    def _sync_canvas(self):
-        """将 Manager 数据推送到 Canvas"""
-        annos = self.manager.get_current_annotations()
-        self.canvas.set_annotations(annos)
-        self.canvas.set_class_names(self.manager.classes)
-        self.canvas.set_colors(self.manager.class_colors)
-        self._update_save_indicator()
-
-    def _update_save_indicator(self):
-        dirty = self.manager.is_dirty()
-        self.save_indicator.setText("🟡 未保存" if dirty else "🟢 已保存")
-
-    # ── 文件操作 ─────────────────────────────────────────────
-
     def _open_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "选择图片目录")
         if not dir_path:
@@ -640,7 +822,6 @@ class AnnotationWidget(QWidget):
         self._refresh_file_list()
         self.img_count_label.setText(f"图片数量: {count}")
         self._update_nav()
-        self._refresh_class_list()
 
     def _refresh_file_list(self):
         self.file_tree.clear()
@@ -655,41 +836,35 @@ class AnnotationWidget(QWidget):
             idx = self.manager.image_list.index(path)
         except (ValueError, AttributeError):
             return
-        self._navigate_to(idx)
-
-    # ── 导航 ─────────────────────────────────────────────────
+        try:
+            self.manager.load_image(idx)
+            img = self.manager.current_image
+            if img is None:
+                return
+            annos = self.manager.get_current_annotations()
+            self.canvas.set_class_names(self.manager.classes)
+            self.canvas.set_colors(self.manager.class_colors)
+            self.canvas.load_image(img, annos)
+            self._update_nav()
+            self._refresh_anno_table()
+        except Exception as e:
+            print(f"Error loading image: {e}")
 
     def _prev_image(self):
         idx = self.manager.current_index - 1
         if idx >= 0:
-            self._navigate_to(idx)
+            self._load_image_at(idx)
 
     def _next_image(self):
         idx = self.manager.current_index + 1
         if idx < len(self.manager.image_list):
-            self._navigate_to(idx)
-
-    def _navigate_to(self, idx):
-        """导航到指定图片，处理自动保存"""
-        if self.auto_save_enabled and self.manager.is_dirty():
-            self._auto_save_current()
-        elif not self.auto_save_enabled and self.manager.is_dirty():
-            reply = QMessageBox.question(
-                self, "未保存的修改",
-                "当前图片有未保存的标注修改。\n是否保存后再切换？",
-                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel
-            )
-            if reply == QMessageBox.Save:
-                self._auto_save_current()
-            elif reply == QMessageBox.Cancel:
-                return
-        self._load_image_at(idx)
+            self._load_image_at(idx)
 
     def _load_image_at(self, idx):
         try:
-            img = self.manager.load_image(idx)
-            if img is not None:
-                self.canvas.load_image(img, self.manager.get_current_annotations())
+            self.manager.load_image(idx)
+            if self.manager.current_image is not None:
+                self.canvas.load_image(self.manager.current_image, self.manager.get_current_annotations())
                 self._update_nav()
                 self._refresh_anno_table()
         except Exception:
@@ -702,36 +877,29 @@ class AnnotationWidget(QWidget):
         self.prev_btn.setEnabled(cur > 1)
         self.next_btn.setEnabled(cur < total)
 
-    # ── 自动保存 ─────────────────────────────────────────────
-
-    def _auto_save_current(self):
-        self.manager.save_annotations()
-        self._update_save_indicator()
-
-    def _toggle_auto_save(self, state):
-        self.auto_save_enabled = (state == Qt.Checked)
-
-    # ── 类别管理 ─────────────────────────────────────────────
-
     def _add_class(self):
         name = self.class_input.text().strip()
         if not name:
             return
         if name in self.manager.classes:
             return
+
         self.manager.classes.append(name)
         cls_id = len(self.manager.classes) - 1
-        self.manager.class_colors[cls_id] = self.manager._gen_color(cls_id)
+        from colorsys import hsv_to_rgb
+        hue = (cls_id * 0.618) % 1.0
+        r, g, b = hsv_to_rgb(hue, 0.8, 0.95)
+        self.manager.class_colors[cls_id] = (int(r), int(g), int(b))
+
         self._refresh_class_list()
         self.class_input.clear()
+        self.canvas.set_class_names(self.manager.classes)
 
     def _del_class(self):
         row = self.class_list.currentRow()
         if 0 <= row < len(self.manager.classes):
-            self.manager.delete_class(row)
+            self.manager.classes.pop(row)
             self._refresh_class_list()
-            self._sync_canvas()
-            self._refresh_anno_table()
 
     def _save_classes(self):
         self.manager.save_classes(self.manager.classes)
@@ -753,123 +921,18 @@ class AnnotationWidget(QWidget):
             self.cur_cls_combo.addItem(cls_name)
         self.canvas.set_class_names(self.manager.classes)
 
-        # 单类别模式
-        if len(self.manager.classes) == 1:
-            self.cur_cls_combo.hide()
-            self.single_class_label.setText(
-                f"单类别模式: {self.manager.classes[0]} (自动分配)"
-            )
-            self.single_class_label.show()
-            self.canvas.set_current_class(0)
-        else:
-            self.cur_cls_combo.show()
-            self.single_class_label.hide()
-
-    # ── 标注操作（信号处理） ──────────────────────────────────
-
     def _on_bbox_drawn(self, x1, y1, x2, y2):
         self.manager.add_bbox(self.canvas.current_class_id, x1, y1, x2, y2)
-        self._sync_canvas()
+        self.canvas.annotations = self.manager.get_current_annotations()
+        self.canvas._render()
         self._refresh_anno_table()
-
-    def _on_bbox_delete_requested(self, idx):
-        self.manager.remove_bbox(idx)
-        self._sync_canvas()
-        self.canvas.selected_bbox_idx = -1
-        self._refresh_anno_table()
-
-    def _on_bbox_move_finished(self, idx, x1, y1, x2, y2):
-        class_id = self.manager.get_bbox_class(idx)
-        self.manager.update_bbox(idx, class_id, x1, y1, x2, y2)
-        self._sync_canvas()
-        self._refresh_anno_table()
-
-    def _on_bbox_selected(self, idx):
-        if idx >= 0:
-            self.anno_table.selectRow(idx)
-        else:
-            self.anno_table.clearSelection()
-
-    def _copy_bboxes(self):
-        self.manager.copy_annotations()
-
-    def _paste_bboxes(self):
-        count = self.manager.paste_annotations()
-        if count > 0:
-            self._sync_canvas()
-            self._refresh_anno_table()
-
-    def _duplicate_bbox(self):
-        if self.canvas.selected_bbox_idx >= 0:
-            self.manager.duplicate_bbox(self.canvas.selected_bbox_idx)
-            self._sync_canvas()
-            self._refresh_anno_table()
-
-    def _micro_move(self, dx, dy):
-        if self.canvas.selected_bbox_idx >= 0:
-            self.manager.micro_move(self.canvas.selected_bbox_idx, dx, dy)
-            self._sync_canvas()
-
-    def _del_annotation(self):
-        row = self.anno_table.currentRow()
-        if row >= 0:
-            self.manager.remove_bbox(row)
-            self._sync_canvas()
-            self.canvas.selected_bbox_idx = -1
-            self._refresh_anno_table()
-
-    # ── 右键菜单 ─────────────────────────────────────────────
-
-    def _show_context_menu(self, bbox_idx, global_pos):
-        menu = QMenu(self)
-        edit_act = menu.addAction("编辑类别")
-        dup_act = menu.addAction("复制标注框")
-        menu.addSeparator()
-        del_act = menu.addAction("删除标注框")
-        action = menu.exec_(global_pos)
-
-        if action == edit_act:
-            self._edit_bbox_label(bbox_idx)
-        elif action == dup_act:
-            self.canvas.selected_bbox_idx = bbox_idx
-            self._duplicate_bbox()
-        elif action == del_act:
-            self.canvas.selected_bbox_idx = bbox_idx
-            self._on_bbox_delete_requested(bbox_idx)
-
-    def _edit_bbox_label(self, bbox_idx):
-        """编辑标注框的类别"""
-        annos = self.manager.get_current_annotations()
-        if not (0 <= bbox_idx < len(annos)):
-            return
-        old_cls_id = annos[bbox_idx].get('class_id', 0)
-        menu = QMenu(self)
-        for cls_id, cls_name in enumerate(self.manager.classes):
-            act = menu.addAction(cls_name)
-            act.setData(cls_id)
-            if cls_id == old_cls_id:
-                act.setCheckable(True)
-                act.setChecked(True)
-        action = menu.exec_(QCursor.pos())
-        if action is not None and action.data() != old_cls_id:
-            h, w = self.manager.current_image.shape[:2]
-            ann = annos[bbox_idx]
-            x1, y1, x2, y2 = self.manager._yolo_to_pixel(ann, w, h)
-            self.manager.update_bbox(bbox_idx, action.data(), x1, y1, x2, y2)
-            self._sync_canvas()
-            self._refresh_anno_table()
-
-    # ── 标注表格 ─────────────────────────────────────────────
 
     def _refresh_anno_table(self):
         annos = self.manager.get_current_annotations()
         self.anno_table.setRowCount(len(annos))
         for i, ann in enumerate(annos):
             cls_id = ann.get('class_id', 0)
-            cls_name = (
-                self.manager.classes[cls_id]
-                if cls_id < len(self.manager.classes) else str(cls_id)
-            )
+            cls_name = self.manager.classes[cls_id] if cls_id < len(self.manager.classes) else str(cls_id)
             h, w = 0, 0
             if self.manager.current_image is not None:
                 h, w = self.manager.current_image.shape[:2]
@@ -878,124 +941,24 @@ class AnnotationWidget(QWidget):
             self.anno_table.setItem(i, 0, QTableWidgetItem(cls_name))
             self.anno_table.setItem(i, 1, QTableWidgetItem(str(bw)))
             self.anno_table.setItem(i, 2, QTableWidgetItem(str(bh)))
-        self._update_stats()
-
-    def _update_stats(self):
-        stats = self.manager.get_stats()
-        if not stats:
-            self.stats_label.setText("统计: 无")
-            return
-        parts = []
-        for cls_id, count in sorted(stats.items()):
-            name = (
-                self.manager.classes[cls_id]
-                if cls_id < len(self.manager.classes) else f"cls_{cls_id}"
-            )
-            parts.append(f"{name}×{count}")
-        self.stats_label.setText("统计: " + "  ".join(parts))
 
     def _on_anno_selected(self, item):
         row = item.row()
         self.canvas.selected_bbox_idx = row
-        self.canvas._invalidate()
+        self.canvas._render()
 
-    # ── 保存 ─────────────────────────────────────────────────
+    def _del_annotation(self):
+        row = self.anno_table.currentRow()
+        if row >= 0:
+            self.manager.remove_bbox(row)
+            self.canvas.annotations = self.manager.get_current_annotations()
+            self.canvas.selected_bbox_idx = -1
+            self.canvas._render()
+            self._refresh_anno_table()
 
     def _save_annotations(self):
         self.manager.save_annotations()
-        self._update_save_indicator()
-        QMessageBox.information(
-            self, "提示",
-            f"标注已保存到:\n{self.manager.dataset_dir}/labels/"
-        )
-
-    # ── 模式/缩放回调 ────────────────────────────────────────
-
-    def _on_zoom_changed(self, zoom):
-        pct = int(zoom * 100)
-        self.zoom_label.setText(f"{pct}%")
-
-    def _enter_pan_mode(self):
-        self.canvas.set_pan_mode(True)
-        self.mode_label.setText("🖐 拖拽模式")
-
-    def _enter_anno_mode(self):
-        self.canvas.set_pan_mode(False)
-        self.mode_label.setText("📝 标注模式")
-
-    def _on_pan_mode_changed(self, enabled):
-        self.mode_label.setText("🖐 拖拽模式" if enabled else "📝 标注模式")
-
-
-# ── 数据集验证对话框 ────────────────────────────────────────
-
-_TYPE_LABELS = {
-    'class_id_oob': 'class_id 越界',
-    'coord_oob': '坐标超出范围',
-    'zero_size': '宽/高为零',
-    'bad_format': '格式错误',
-    'bad_number': '数值非法',
-    'missing_label': '缺少标注文件',
-    'empty_label': '空标注文件',
-}
-
-class ValidationDialog(QDialog):
-    def __init__(self, result, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("数据集标注验证")
-        self.resize(850, 500)
-        self.setMinimumSize(600, 350)
-
-        layout = QVBoxLayout(self)
-
-        # 摘要
-        summary = QLabel(
-            f"发现 <b>{len(result.errors)}</b> 个问题 "
-            f"（{', '.join(f'{_TYPE_LABELS.get(k, k)}×{v}' for k, v in result.error_summary.items())}）"
-        )
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        # 表格
-        table = QTableWidget()
-        table.setColumnCount(4)
-        table.setHorizontalHeaderLabels(["文件", "类型", "详情", "位置"])
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-
-        table.setRowCount(len(result.errors))
-        for i, e in enumerate(result.errors):
-            fname = Path(e.file_path).name if e.file_path else '—'
-            table.setItem(i, 0, QTableWidgetItem(fname))
-            table.setItem(i, 1, QTableWidgetItem(_TYPE_LABELS.get(e.issue_type, e.issue_type)))
-            table.setItem(i, 2, QTableWidgetItem(e.detail))
-            loc = f"行 {e.bbox_index + 1}" if e.bbox_index >= 0 else "—"
-            table.setItem(i, 3, QTableWidgetItem(loc))
-
-        layout.addWidget(table)
-
-        # 按钮
-        btn_layout = QHBoxLayout()
-        fix_btn = QPushButton("自动修复 (删除有问题的标注行)")
-        fix_btn.setStyleSheet("color: #e67e22;")
-        fix_btn.clicked.connect(lambda: self.done(2))
-
-        skip_btn = QPushButton("跳过 (继续训练)")
-        skip_btn.setStyleSheet("color: #666;")
-        skip_btn.clicked.connect(lambda: self.done(1))
-
-        cancel_btn = QPushButton("取消训练")
-        cancel_btn.clicked.connect(self.reject)
-
-        btn_layout.addWidget(fix_btn)
-        btn_layout.addStretch()
-        btn_layout.addWidget(skip_btn)
-        btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
+        QMessageBox.information(self, "提示", f"标注已保存到:\n{self.manager.dataset_dir}/labels/")
 
 
 class TrainingWidget(QWidget):
@@ -1604,28 +1567,6 @@ class TrainingWidget(QWidget):
         self.metric_ax.set_ylabel('mAP')
         self.metric_ax.grid(True, alpha=0.3)
         self.curve_canvas.draw()
-
-        # ── 数据集验证 ──
-        result = validate_dataset(data_yaml)
-        if result.has_errors:
-            dlg = ValidationDialog(result, self)
-            choice = dlg.exec_()
-            if choice == QDialog.Rejected:  # 取消
-                self.train_btn.setEnabled(True)
-                self.stop_btn.setEnabled(False)
-                return
-            elif choice == 2:  # 自动修复
-                fix_stats = auto_fix_issues(result)
-                QMessageBox.information(
-                    self, "修复完成",
-                    f"已清理 {fix_stats['fixed_lines']} 行非法标注，"
-                    f"删除 {fix_stats['removed_files']} 个无效标注文件。\n"
-                    f"建议重新验证后再训练。"
-                )
-                self.train_btn.setEnabled(True)
-                self.stop_btn.setEnabled(False)
-                return
-            # choice == 1 → 跳过，继续训练
 
         # 自动切换到监控页
         self.sub_tabs.setCurrentIndex(1)
@@ -3485,7 +3426,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(open_act)
 
         save_act = QAction("保存标注", self)
-        save_act.triggered.connect(self._save_annotation_menu)
+        save_act.triggered.connect(self._switch_to_annotation)
         file_menu.addAction(save_act)
 
         file_menu.addSeparator()
@@ -3738,6 +3679,3 @@ class MainWindow(QMainWindow):
 
     def _switch_to_annotation(self):
         self._switch_page(1)
-
-    def _save_annotation_menu(self):
-        self.annotation_widget._save_annotations()

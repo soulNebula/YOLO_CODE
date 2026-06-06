@@ -609,20 +609,6 @@ class ImageCanvas(QLabel):
         key = event.key()
         mods = event.modifiers()
 
-        if key == Qt.Key_M and not (mods & Qt.ControlModifier):
-            self._pan_mode = True
-            self.setCursor(Qt.OpenHandCursor)
-            self.panModeChanged.emit(True)
-            return
-
-        if key == Qt.Key_N and not (mods & Qt.ControlModifier):
-            self._pan_mode = False
-            self._panning = False
-            self._pan_start = None
-            self.setCursor(Qt.ArrowCursor)
-            self.panModeChanged.emit(False)
-            return
-
         if self._pan_mode:
             super().keyPressEvent(event)
             return

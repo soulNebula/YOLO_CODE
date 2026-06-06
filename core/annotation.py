@@ -334,7 +334,7 @@ class AnnotationManager:
         os.makedirs(labels_dir, exist_ok=True)
 
         # 只保存脏文件，无脏文件时保存全部（兼容手动点击"保存所有"）
-        targets = self.dirty_images if self.dirty_images else self.annotations.keys()
+        targets = list(self.dirty_images) if self.dirty_images else list(self.annotations.keys())
 
         for img_path in targets:
             bboxes = self.annotations.get(img_path, [])
