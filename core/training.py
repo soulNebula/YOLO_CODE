@@ -1,7 +1,7 @@
 import os
 import sys
 import subprocess
-import threading
+from PyQt5.QtCore import QThread, pyqtSignal
 
 
 def _preload_torch_dll():
@@ -336,25 +336,179 @@ def get_pip_mirrors():
     }
 
 
+# ── QThread 训练工作线程 ────────────────────────────────────
+
+class TrainingWorker(QThread):
+    """QThread 训练工作线程 —— 安全的跨线程信号通信"""
+    progress = pyqtSignal(int, int, float)       # current, total, loss
+    log = pyqtSignal(str)                        # 日志消息
+    metrics = pyqtSignal(dict)                   # 每轮指标
+    finished = pyqtSignal(dict)                  # 完成：best_metrics
+    error = pyqtSignal(str)                      # 错误消息
+
+    def __init__(self, params):
+        super().__init__()
+        self.params = params
+        self._stop_requested = False
+        self.current_model = None
+        self.epoch_metrics = []
+        self.best_metrics = {}
+
+    def request_stop(self):
+        self._stop_requested = True
+        # 尝试通知 ultralytics trainer 停止
+        if self.current_model and hasattr(self.current_model, 'trainer'):
+            try:
+                self.current_model.trainer.stop_training = True
+            except Exception:
+                pass
+
+    def run(self):
+        """在工作线程中执行——不要直接操作 Qt widget"""
+        try:
+            from ultralytics import YOLO
+        except ImportError:
+            self.error.emit("未安装 ultralytics，请先执行: pip install ultralytics")
+            return
+
+        params = self.params
+        try:
+            model_name = params.get('model', 'yolov8n')
+            data_yaml = params.get('data_yaml', '')
+            epochs = params.get('epochs', 100)
+            batch_size = params.get('batch_size', 16)
+            img_size = params.get('img_size', 640)
+            lr = params.get('learning_rate', 0.01)
+            device = params.get('device', 'auto')
+            workers = params.get('workers', 4)
+            pretrained = params.get('pretrained', True)
+
+            self.log.emit(f"开始训练: {model_name}")
+            self.log.emit(f"数据集: {data_yaml}")
+            self.log.emit(f"Epochs: {epochs} | Batch: {batch_size} | ImgSize: {img_size} | LR: {lr}")
+            self.log.emit(f"设备: {device} | Workers: {workers}")
+
+            if pretrained:
+                model = YOLO(f"{model_name}.pt")
+                self.log.emit("使用预训练权重")
+            else:
+                model = YOLO(f"{model_name}.yaml")
+                self.log.emit("从头开始训练")
+
+            self.current_model = model
+
+            # 注册回调 — 每轮结束通知 UI
+            model.add_callback("on_train_epoch_end", self._on_epoch_end)
+
+            try:
+                model.train(
+                    data=data_yaml,
+                    epochs=epochs,
+                    batch=batch_size,
+                    imgsz=img_size,
+                    lr0=lr,
+                    device=device,
+                    workers=workers,
+                    verbose=False,
+                    exist_ok=True
+                )
+            except KeyboardInterrupt:
+                self.log.emit("⚠ 训练被用户中断")
+                self.finished.emit(self.best_metrics)
+                return
+            except RuntimeError as e:
+                msg = str(e)
+                if 'stop' in msg.lower() or 'interrupt' in msg.lower():
+                    self.log.emit("⚠ 训练已停止")
+                else:
+                    self.error.emit(f"训练运行错误: {msg}")
+                    self.finished.emit(self.best_metrics)
+                return
+
+            save_dir = params.get('save_dir', 'runs/train')
+            self.log.emit(f"训练完成! 模型保存至: {save_dir}")
+            self.progress.emit(100, 100, 0)
+            self.log.emit(
+                f"最佳指标: mAP50={self.best_metrics.get('mAP50',0):.4f} "
+                f"mAP50-95={self.best_metrics.get('mAP50-95',0):.4f}"
+            )
+            self.finished.emit(self.best_metrics)
+
+        except Exception as e:
+            self.error.emit(f"训练出错: {str(e)}")
+            self.finished.emit(self.best_metrics)
+
+    def _on_epoch_end(self, trainer):
+        """每轮结束回调——在 QThread 中运行，通过信号安全发送到 UI"""
+        try:
+            epoch = trainer.epoch + 1
+            total = trainer.epochs
+
+            loss_items = getattr(trainer, 'loss_items', None)
+            if loss_items is not None:
+                box_loss = float(loss_items[0]) if len(loss_items) > 0 else 0
+                cls_loss = float(loss_items[1]) if len(loss_items) > 1 else 0
+                dfl_loss = float(loss_items[2]) if len(loss_items) > 2 else 0
+            else:
+                box_loss = cls_loss = dfl_loss = 0
+
+            metrics = getattr(trainer, 'metrics', {}) or {}
+            map50 = float(metrics.get('metrics/mAP50(B)', 0))
+            map50_95 = float(metrics.get('metrics/mAP50-95(B)', 0))
+
+            if map50 > self.best_metrics.get('mAP50', 0):
+                self.best_metrics['mAP50'] = map50
+            if map50_95 > self.best_metrics.get('mAP50-95', 0):
+                self.best_metrics['mAP50-95'] = map50_95
+            if box_loss > 0 and box_loss < self.best_metrics.get('box_loss', float('inf')):
+                self.best_metrics['box_loss'] = box_loss
+            if cls_loss > 0 and cls_loss < self.best_metrics.get('cls_loss', float('inf')):
+                self.best_metrics['cls_loss'] = cls_loss
+            if dfl_loss > 0 and dfl_loss < self.best_metrics.get('dfl_loss', float('inf')):
+                self.best_metrics['dfl_loss'] = dfl_loss
+
+            epoch_data = {
+                'epoch': epoch,
+                'box_loss': box_loss,
+                'cls_loss': cls_loss,
+                'dfl_loss': dfl_loss,
+                'mAP50': map50,
+                'mAP50-95': map50_95,
+            }
+            self.epoch_metrics.append(epoch_data)
+
+            # 通过信号发送到 UI（线程安全）
+            self.progress.emit(epoch, total, box_loss + cls_loss + dfl_loss)
+            self.log.emit(
+                f"Epoch {epoch}/{total} | "
+                f"box={box_loss:.4f} cls={cls_loss:.4f} dfl={dfl_loss:.4f} | "
+                f"mAP50={map50:.4f} mAP50-95={map50_95:.4f}"
+            )
+            self.metrics.emit(epoch_data)
+
+            if self._stop_requested:
+                trainer.stop_training = True
+
+        except Exception as e:
+            self.log.emit(f"回调错误: {e}")
+
+
 class TrainingManager:
-    """模型训练管理器"""
+    """模型训练管理器 —— 管理 QThread 生命周期"""
 
     def __init__(self):
         self.is_training = False
-        self.stop_requested = False
-        self.training_thread = None
-        self.progress_callback = None
-        self.log_callback = None
-        self.metrics_callback = None
+        self._worker = None
         self.current_model = None
         self.env_info = None
         self.epoch_metrics = []
         self.best_metrics = {}
 
     def set_callbacks(self, progress_callback=None, log_callback=None, metrics_callback=None):
-        self.progress_callback = progress_callback
-        self.log_callback = log_callback
-        self.metrics_callback = metrics_callback
+        """保持兼容：set_callbacks 现已废弃，直接连接 worker 信号"""
+        self._progress_cb = progress_callback
+        self._log_cb = log_callback
+        self._metrics_cb = metrics_callback
 
     def detect_env(self):
         """检测环境"""
@@ -510,151 +664,57 @@ class TrainingManager:
             return False, str(e)
 
     def start_training(self, params):
-        """开始训练"""
+        """开始训练（使用 QThread）"""
         if self.is_training:
             return False
 
         self.is_training = True
-        self.stop_requested = False
-        self.epoch_metrics = []  # 每轮指标记录
-        self.best_metrics = {}   # 最佳值追踪
+        self.epoch_metrics = []
+        self.best_metrics = {}
 
-        self.training_thread = threading.Thread(
-            target=self._run_training, args=(params,), daemon=True
-        )
-        self.training_thread.start()
+        self._worker = TrainingWorker(params)
+
+        # 桥接到旧版回调和/或直接信号
+        if self._log_cb:
+            self._worker.log.connect(self._log_cb)
+        if self._progress_cb:
+            self._worker.progress.connect(self._progress_cb)
+        if self._metrics_cb:
+            self._worker.metrics.connect(self._metrics_cb)
+
+        # QThread 完成/错误 → 同步回 Manager
+        self._worker.finished.connect(self._on_worker_finished)
+        self._worker.error.connect(self._on_worker_error)
+
+        self._worker.start()
         return True
 
     def stop_training(self):
         """停止训练"""
-        self.stop_requested = True
         self.is_training = False
+        if self._worker and self._worker.isRunning():
+            self._worker.request_stop()
+            self._worker.wait(3000)  # 等最多 3 秒
 
     def get_training_metrics(self):
         """返回训练指标数据"""
-        return {
-            'epoch_metrics': self.epoch_metrics,
-            'best_metrics': self.best_metrics,
-        }
-
-    def _on_train_epoch_end(self, trainer):
-        """训练每轮结束回调"""
-        try:
-            epoch = trainer.epoch + 1
-            total = trainer.epochs
-
-            # 获取损失值
-            loss_items = getattr(trainer, 'loss_items', None)
-            if loss_items is not None:
-                box_loss = float(loss_items[0]) if len(loss_items) > 0 else 0
-                cls_loss = float(loss_items[1]) if len(loss_items) > 1 else 0
-                dfl_loss = float(loss_items[2]) if len(loss_items) > 2 else 0
-            else:
-                box_loss = cls_loss = dfl_loss = 0
-
-            # 获取评估指标
-            metrics = getattr(trainer, 'metrics', {}) or {}
-            map50 = float(metrics.get('metrics/mAP50(B)', 0))
-            map50_95 = float(metrics.get('metrics/mAP50-95(B)', 0))
-
-            # 更新最佳值
-            if map50 > self.best_metrics.get('mAP50', 0):
-                self.best_metrics['mAP50'] = map50
-            if map50_95 > self.best_metrics.get('mAP50-95', 0):
-                self.best_metrics['mAP50-95'] = map50_95
-            if box_loss > 0 and box_loss < self.best_metrics.get('box_loss', float('inf')):
-                self.best_metrics['box_loss'] = box_loss
-            if cls_loss > 0 and cls_loss < self.best_metrics.get('cls_loss', float('inf')):
-                self.best_metrics['cls_loss'] = cls_loss
-            if dfl_loss > 0 and dfl_loss < self.best_metrics.get('dfl_loss', float('inf')):
-                self.best_metrics['dfl_loss'] = dfl_loss
-
-            # 记录本轮指标
-            epoch_data = {
-                'epoch': epoch,
-                'box_loss': box_loss,
-                'cls_loss': cls_loss,
-                'dfl_loss': dfl_loss,
-                'mAP50': map50,
-                'mAP50-95': map50_95,
+        worker = self._worker
+        if worker:
+            return {
+                'epoch_metrics': worker.epoch_metrics,
+                'best_metrics': worker.best_metrics,
             }
-            self.epoch_metrics.append(epoch_data)
+        return {'epoch_metrics': self.epoch_metrics, 'best_metrics': self.best_metrics}
 
-            # 发送到UI
-            self._emit_progress(epoch, total, box_loss + cls_loss + dfl_loss)
-            self._emit_log(
-                f"Epoch {epoch}/{total} | "
-                f"box={box_loss:.4f} cls={cls_loss:.4f} dfl={dfl_loss:.4f} | "
-                f"mAP50={map50:.4f} mAP50-95={map50_95:.4f}"
-            )
-            self._emit_metrics(epoch_data)
+    def _on_worker_finished(self, best_metrics):
+        self.best_metrics = best_metrics
+        self.current_model = self._worker.current_model if self._worker else None
+        self.is_training = False
 
-            # 检查停止请求
-            if self.stop_requested:
-                trainer.stop_training = True
-
-        except Exception as e:
-            self._emit_log(f"回调错误: {e}")
-
-    def _run_training(self, params):
-        """执行训练过程"""
-        try:
-            from ultralytics import YOLO
-        except ImportError:
-            self._emit_log("错误: 未安装ultralytics库，请先安装: pip install ultralytics")
-            self.is_training = False
-            return
-
-        try:
-            model_name = params.get('model', 'yolov8n')
-            data_yaml = params.get('data_yaml', '')
-            epochs = params.get('epochs', 100)
-            batch_size = params.get('batch_size', 16)
-            img_size = params.get('img_size', 640)
-            lr = params.get('learning_rate', 0.01)
-            device = params.get('device', 'auto')
-            workers = params.get('workers', 4)
-            pretrained = params.get('pretrained', True)
-
-            self._emit_log(f"开始训练: {model_name}")
-            self._emit_log(f"数据集: {data_yaml}")
-            self._emit_log(f"Epochs: {epochs} | Batch: {batch_size} | ImgSize: {img_size} | LR: {lr}")
-            self._emit_log(f"设备: {device} | Workers: {workers}")
-
-            if pretrained:
-                model = YOLO(f"{model_name}.pt")
-                self._emit_log("使用预训练权重")
-            else:
-                model = YOLO(f"{model_name}.yaml")
-                self._emit_log("从头开始训练")
-
-            self.current_model = model
-
-            # 注册回调
-            model.add_callback("on_train_epoch_end", self._on_train_epoch_end)
-
-            model.train(
-                data=data_yaml,
-                epochs=epochs,
-                batch=batch_size,
-                imgsz=img_size,
-                lr0=lr,
-                device=device,
-                workers=workers,
-                verbose=False,
-                exist_ok=True
-            )
-
-            save_dir = params.get('save_dir', 'runs/train')
-            self._emit_log(f"训练完成! 模型保存至: {save_dir}")
-            self._emit_progress(100, 100, 0)
-            self._emit_log(f"最佳指标: mAP50={self.best_metrics.get('mAP50',0):.4f} "
-                          f"mAP50-95={self.best_metrics.get('mAP50-95',0):.4f}")
-
-        except Exception as e:
-            self._emit_log(f"训练出错: {str(e)}")
-        finally:
-            self.is_training = False
+    def _on_worker_error(self, msg):
+        if self._log_cb:
+            self._log_cb(f"[错误] {msg}")
+        self.is_training = False
 
     def load_model(self, model_path):
         """加载模型"""
@@ -674,13 +734,13 @@ class TrainingManager:
         }
 
     def _emit_progress(self, current, total, loss):
-        if self.progress_callback:
-            self.progress_callback(current, total, loss)
+        if self._progress_cb:
+            self._progress_cb(current, total, loss)
 
     def _emit_log(self, message):
-        if self.log_callback:
-            self.log_callback(message)
+        if self._log_cb:
+            self._log_cb(message)
 
     def _emit_metrics(self, metrics):
-        if self.metrics_callback:
-            self.metrics_callback(metrics)
+        if self._metrics_cb:
+            self._metrics_cb(metrics)

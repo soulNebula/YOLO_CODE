@@ -2,7 +2,79 @@ import os
 import cv2
 import numpy as np
 from pathlib import Path
-import threading
+from PyQt5.QtCore import QThread, pyqtSignal
+
+
+# ── QThread 视频/摄像头推理线程 ─────────────────────────────
+
+class VideoWorker(QThread):
+    """QThread 视频推理线程"""
+    frame_ready = pyqtSignal(object, list)   # frame (numpy), detections (list)
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self, model, source, conf=0.5, iou=0.45, class_names=None):
+        super().__init__()
+        self._model = model
+        self._source = source
+        self._conf = conf
+        self._iou = iou
+        self._class_names = class_names or []
+        self._stop_requested = False
+
+    def request_stop(self):
+        self._stop_requested = True
+
+    def run(self):
+        try:
+            cap = cv2.VideoCapture(self._source)
+            if not cap.isOpened():
+                self.error.emit(f"无法打开视频源: {self._source}")
+                return
+
+            while not self._stop_requested:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                try:
+                    results = self._model(
+                        frame, conf=self._conf, iou=self._iou, verbose=False
+                    )
+                except Exception as e:
+                    self.error.emit(f"推理出错: {e}")
+                    break
+
+                annotated, detections = self._process_results(frame, results)
+                self.frame_ready.emit(annotated, detections)
+
+            cap.release()
+        except Exception as e:
+            self.error.emit(f"视频处理异常: {e}")
+        finally:
+            self.finished.emit()
+
+    @staticmethod
+    def _process_results(img, results):
+        detections = []
+        if results and len(results) > 0:
+            r = results[0]
+            if r.boxes is not None:
+                boxes = r.boxes.xyxy.cpu().numpy() if r.boxes.xyxy is not None else []
+                confs = r.boxes.conf.cpu().numpy() if r.boxes.conf is not None else []
+                clss = r.boxes.cls.cpu().numpy() if r.boxes.cls is not None else []
+                annotated = r.plot()
+                for i in range(len(boxes)):
+                    detections.append({
+                        'x1': int(boxes[i][0]), 'y1': int(boxes[i][1]),
+                        'x2': int(boxes[i][2]), 'y2': int(boxes[i][3]),
+                        'conf': float(confs[i]),
+                        'class_id': int(clss[i]),
+                        'class_name': r.names.get(int(clss[i]), f"cls_{int(clss[i])}")
+                    })
+                return annotated, detections
+        return img, detections
+
 
 class InferenceManager:
     """模型推理管理器"""
@@ -12,10 +84,8 @@ class InferenceManager:
         self.model_path = None
         self.conf_threshold = 0.5
         self.iou_threshold = 0.45
-        self.input_source = None
         self.is_running = False
-        self.stop_requested = False
-        self.inference_thread = None
+        self._worker = None
         self.result_callback = None
         self.class_names = []
 
@@ -38,7 +108,7 @@ class InferenceManager:
         self.iou_threshold = iou_threshold
 
     def run_image(self, image_path, imgsz=640, half=False, augment=False, max_det=300, device=None):
-        """对单张图片进行推理"""
+        """对单张图片进行推理（同步，图片通常很快）"""
         if self.model is None:
             return None, "请先加载模型"
 
@@ -57,42 +127,39 @@ class InferenceManager:
             return None, str(e)
 
     def run_video(self, video_path, frame_callback=None):
-        """对视频进行推理"""
+        """对视频进行推理（QThread）"""
         if self.model is None:
             return "请先加载模型"
 
         self.is_running = True
-        self.stop_requested = False
-        self.inference_thread = threading.Thread(
-            target=self._process_video, args=(video_path, frame_callback), daemon=True
+        self._worker = VideoWorker(
+            self.model, video_path,
+            self.conf_threshold, self.iou_threshold,
+            self.class_names
         )
-        self.inference_thread.start()
+        if frame_callback:
+            self._worker.frame_ready.connect(frame_callback)
+        self._worker.finished.connect(self._on_video_finished)
+        self._worker.error.connect(self._on_video_error)
+        self._worker.start()
 
     def run_camera(self, camera_id=0, frame_callback=None):
-        """对摄像头进行实时推理"""
-        self.run_video(camera_id, frame_callback)  # OpenCV可以将摄像头ID作为视频源
+        """对摄像头进行实时推理（QThread）"""
+        self.run_video(camera_id, frame_callback)
 
     def stop(self):
-        self.stop_requested = True
+        self.is_running = False
+        if self._worker and self._worker.isRunning():
+            self._worker.request_stop()
+            self._worker.wait(3000)
+
+    def _on_video_finished(self):
         self.is_running = False
 
-    def _process_video(self, source, frame_callback=None):
-        try:
-            cap = cv2.VideoCapture(source)
-            while self.is_running and not self.stop_requested:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                results = self.model(frame, conf=self.conf_threshold, iou=self.iou_threshold, verbose=False)
-                annotated_frame, detections = self._process_results(frame, results)
-
-                if frame_callback:
-                    frame_callback(annotated_frame, detections)
-
-            cap.release()
-        except Exception as e:
-            pass
+    def _on_video_error(self, msg):
+        if self.result_callback:
+            self.result_callback(None, [{'error': msg}])
+        self.is_running = False
 
     def _process_results(self, img, results):
         """处理推理结果"""
