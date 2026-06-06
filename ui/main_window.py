@@ -2316,6 +2316,12 @@ class InferenceWidget(QWidget):
         self.export_crop_btn.clicked.connect(self._crop_and_save)
         src_layout.addWidget(self.export_crop_btn)
 
+        # Benchmark
+        self.bench_btn = QPushButton("⚡ Benchmark")
+        self.bench_btn.setToolTip("推理速度基准测试")
+        self.bench_btn.clicked.connect(self._run_benchmark)
+        src_layout.addWidget(self.bench_btn)
+
         self.run_btn = QPushButton("▶ 开始推理")
         self.run_btn.setObjectName("btnTrain")
         self.run_btn.clicked.connect(self._run_inference)
@@ -2367,6 +2373,9 @@ class InferenceWidget(QWidget):
         stat_layout.addWidget(self.detect_count_label)
         stat_layout.addWidget(class_stats)
         stat_layout.addStretch()
+        self.speed_label = QLabel("")
+        self.speed_label.setStyleSheet("color: #27ae60; font-size: 12px; border: none; padding: 0 8px;")
+        stat_layout.addWidget(self.speed_label)
         stat_layout.addWidget(self.inference_time_label)
         self.class_stats_label = class_stats
 
@@ -2666,6 +2675,99 @@ class InferenceWidget(QWidget):
 
     def _on_video_frame(self, frame, detections):
         self.frame_signal.emit(frame, detections)
+
+    def _run_benchmark(self):
+        """推理速度基准测试"""
+        if self.manager.model is None:
+            QMessageBox.warning(self, "提示", "请先加载模型")
+            return
+        import time
+        img_path = self.input_path_edit.text()
+        if img_path and os.path.isfile(img_path):
+            img = cv2.imread(img_path)
+        else:
+            # 生成随机测试图
+            img = np.random.randint(0, 255, (640, 640, 3), dtype=np.uint8)
+        h, w = img.shape[:2]
+        imgsz = self.infer_imgsz_spin.value()
+        conf = self.manager.conf_threshold
+        iou = self.manager.iou_threshold
+        half = self.half_prec_check.isChecked()
+        dev = 'GPU' if self.infer_device_combo.currentText() == 'GPU 0' else 'CPU'
+
+        self.bench_btn.setEnabled(False)
+        self.log_text.append(f"Benchmark: {w}x{h} imgsz={imgsz} conf={conf} half={half} dev={dev}")
+
+        # Warmup
+        for _ in range(3):
+            self.manager.model(img, conf=conf, iou=iou, imgsz=imgsz, half=half, verbose=False)
+
+        # Benchmark
+        n = 20
+        t0 = time.time()
+        for _ in range(n):
+            self.manager.model(img, conf=conf, iou=iou, imgsz=imgsz, half=half, verbose=False)
+        el = time.time() - t0
+        fps = n / el
+        ms = el / n * 1000
+        self.speed_label.setText(f"PyTorch: {fps:.1f} FPS | {ms:.1f} ms/img ({dev})")
+
+        # GPU memory
+        try:
+            import torch
+            if torch.cuda.is_available():
+                mem = torch.cuda.max_memory_allocated() / 1024**2
+                torch.cuda.reset_peak_memory_stats()
+                self.speed_label.setText(
+                    f"PyTorch: {fps:.1f} FPS | {ms:.1f} ms/img | GPU 峰值显存: {mem:.0f} MiB"
+                )
+        except Exception:
+            pass
+
+        self.log_text.append(
+            f"Benchmark 完成: {fps:.1f} FPS | {ms:.1f} ms/img | {n} iters | {imgsz}px | {'FP16' if half else 'FP32'}"
+        )
+        self.bench_btn.setEnabled(True)
+
+        # ONNX 对比（如果存在同目录 .onnx）
+        onnx_path = None
+        if self.manager.model_path:
+            onnx_path = os.path.splitext(self.manager.model_path)[0] + '.onnx'
+        if onnx_path and os.path.isfile(onnx_path):
+            self._bench_onnx(img, onnx_path, imgsz, n)
+
+    def _bench_onnx(self, img, onnx_path, imgsz, n=20):
+        """ONNX 推理基准"""
+        import time
+        try:
+            import onnxruntime as ort
+            # 预处理
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img_in = cv2.resize(img_rgb, (imgsz, imgsz)).transpose(2, 0, 1).astype(np.float32) / 255.0
+            img_in = img_in[np.newaxis, ...]
+
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            session = ort.InferenceSession(onnx_path, providers=providers)
+            input_name = session.get_inputs()[0].name
+
+            # Warmup
+            for _ in range(3):
+                session.run(None, {input_name: img_in})
+
+            t0 = time.time()
+            for _ in range(n):
+                session.run(None, {input_name: img_in})
+            el = time.time() - t0
+            fps = n / el
+            ms = el / n * 1000
+
+            cur = self.speed_label.text()
+            self.speed_label.setText(f"{cur}  |  ONNX: {fps:.1f} FPS | {ms:.1f} ms/img")
+            self.log_text.append(f"ONNX Benchmark: {fps:.1f} FPS | {ms:.1f} ms/img")
+        except ImportError:
+            self.log_text.append("ONNX 对比跳过（未安装 onnxruntime）")
+        except Exception as e:
+            self.log_text.append(f"ONNX 对比失败: {e}")
 
     def _save_inference_image(self, img):
         from utils.config import get_work_dir
