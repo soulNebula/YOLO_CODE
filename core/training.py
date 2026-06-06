@@ -383,12 +383,21 @@ class TrainingWorker(QThread):
             workers = params.get('workers', 4)
             pretrained = params.get('pretrained', True)
 
+            resume = params.get('resume', False)
+            resume_ckpt = params.get('resume_checkpoint', None)
+            project = params.get('project', 'runs')
+            name = params.get('name', 'train')
+
             self.log.emit(f"开始训练: {model_name}")
             self.log.emit(f"数据集: {data_yaml}")
             self.log.emit(f"Epochs: {epochs} | Batch: {batch_size} | ImgSize: {img_size} | LR: {lr}")
             self.log.emit(f"设备: {device} | Workers: {workers}")
+            self.log.emit(f"输出目录: {project}/{name}")
 
-            if pretrained:
+            if resume and resume_ckpt:
+                self.log.emit(f"从 checkpoint 继续训练: {resume_ckpt}")
+                model = YOLO(resume_ckpt)
+            elif pretrained:
                 model = YOLO(f"{model_name}.pt")
                 self.log.emit("使用预训练权重")
             else:
@@ -409,8 +418,11 @@ class TrainingWorker(QThread):
                     lr0=lr,
                     device=device,
                     workers=workers,
+                    project=project,
+                    name=name,
+                    exist_ok=False,
+                    resume=resume,
                     verbose=False,
-                    exist_ok=True
                 )
             except KeyboardInterrupt:
                 self.log.emit("⚠ 训练被用户中断")
@@ -425,8 +437,7 @@ class TrainingWorker(QThread):
                     self.finished.emit(self.best_metrics)
                 return
 
-            save_dir = params.get('save_dir', 'runs/train')
-            self.log.emit(f"训练完成! 模型保存至: {save_dir}")
+            self.log.emit(f"训练完成! 模型保存至: {project}/{name}/weights/")
             self.progress.emit(100, 100, 0)
             self.log.emit(
                 f"最佳指标: mAP50={self.best_metrics.get('mAP50',0):.4f} "

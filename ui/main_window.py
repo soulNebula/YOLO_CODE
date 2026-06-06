@@ -30,7 +30,8 @@ from core.inference import InferenceManager
 from core.evaluation import EvaluationManager
 from utils.helpers import (
     get_yolo_classes_from_dataset, save_yolo_dataset_config,
-    get_supported_models, get_default_training_params
+    get_supported_models, get_default_training_params,
+    find_latest_checkpoint
 )
 from utils.validator import validate_dataset, auto_fix_issues, \
     validate_yaml_consistency, auto_generate_yaml
@@ -1616,8 +1617,26 @@ class TrainingWidget(QWidget):
             'pretrained': self.pretrained_check.isChecked(),
             'augment': self.augment_check.isChecked(),
             'cos_lr': self.cos_lr_check.isChecked(),
-            'save_dir': 'runs/train',
+            'project': 'runs',
+            'name': 'train',
         }
+
+        # ── 检测可继续的训练 ──
+        last_pt, best_pt, prev_dir = find_latest_checkpoint('runs', 'train')
+        if last_pt:
+            reply = QMessageBox.question(
+                self, "发现未完成的训练",
+                f"检测到上一次训练记录:\n{prev_dir}\n\n"
+                f"是否从上次中断处继续训练？\n"
+                f"（选择「否」将创建新训练目录 {params['name']}2/）",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                params['resume'] = True
+                params['resume_checkpoint'] = last_pt
+                params['name'] = os.path.basename(prev_dir)
+                self.log_text.append(f"从 {prev_dir} 继续训练...")
+            # 否 → 自动递增到 train2/ train3/ ...
 
         self.train_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
@@ -1629,8 +1648,9 @@ class TrainingWidget(QWidget):
             self.status_callback(True)
 
         # 更新监控页信息
+        run_name = params.get('name', 'train')
         self.monitor_ds_label.setText(f"数据集: {Path(data_yaml).stem}")
-        self.monitor_model_label.setText(f"模型: {params['model']}")
+        self.monitor_model_label.setText(f"模型: {params['model']} → runs/{run_name}/")
 
         # 清空指标表格
         for r in range(5):

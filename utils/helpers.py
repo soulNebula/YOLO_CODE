@@ -71,3 +71,32 @@ def format_time(seconds):
         h = int(seconds // 3600)
         m = int((seconds % 3600) // 60)
         return f"{h}h {m}m"
+
+
+def find_latest_checkpoint(project='runs', name='train'):
+    """查找最近的 last.pt 和 best.pt
+
+    返回 (last_pt_path, best_pt_path, run_dir) 或 (None, None, None)
+    自动递增查找: train/ train2/ train3/ ...
+    """
+    import os
+    base = os.path.abspath(project)
+
+    # 从 train/ 开始递增查找
+    for suffix in ['', '2', '3', '4', '5', '6', '7', '8', '9'] + [str(i) for i in range(10, 50)]:
+        run_dir = os.path.join(base, f'{name}{suffix}')
+        weights_dir = os.path.join(run_dir, 'weights')
+        last_pt = os.path.join(weights_dir, 'last.pt')
+        if os.path.isfile(last_pt):
+            best_pt = os.path.join(weights_dir, 'best.pt')
+            return last_pt, best_pt if os.path.isfile(best_pt) else None, run_dir
+        if not os.path.isdir(run_dir):
+            # 该目录不存在 → 可用于新训练
+            return None, None, run_dir
+    return None, None, os.path.join(base, f'{name}50')
+
+
+def get_next_run_dir(project='runs', name='train'):
+    """返回下一个可用的运行目录（自动递增）"""
+    _, _, run_dir = find_latest_checkpoint(project, name)
+    return run_dir
