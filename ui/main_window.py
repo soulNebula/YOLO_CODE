@@ -35,6 +35,8 @@ from utils.helpers import (
 )
 from utils.validator import validate_dataset, auto_fix_issues, \
     validate_yaml_consistency, auto_generate_yaml
+from utils.config import remember_last_data_yaml, recall_last_data_yaml, \
+    remember_last_model, recall_last_model, get_work_dir
 from core.training import get_pip_mirrors
 
 
@@ -1015,6 +1017,16 @@ class TrainingWidget(QWidget):
         self.status_callback = None  # 由MainWindow设置
         self._init_ui()
 
+        # ── 恢复上次设置 ──
+        last_yaml = recall_last_data_yaml()
+        if last_yaml and os.path.exists(last_yaml):
+            self.data_yaml_edit.setText(last_yaml)
+            self._validate_current_yaml(last_yaml)
+        last_model = recall_last_model()
+        idx = self.model_combo.findText(last_model)
+        if idx >= 0:
+            self.model_combo.setCurrentIndex(idx)
+
     def _init_ui(self):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(8, 8, 8, 8)
@@ -1178,7 +1190,8 @@ class TrainingWidget(QWidget):
         model_row = QHBoxLayout()
         self.model_combo = QComboBox()
         self.model_combo.addItems(get_supported_models())
-        self.model_combo.setCurrentText('yolov8n')
+        self.model_combo.setCurrentText(recall_last_model())
+        self.model_combo.currentTextChanged.connect(remember_last_model)
         model_row.addWidget(self.model_combo)
         self.pretrained_check = QCheckBox("预训练")
         self.pretrained_check.setChecked(True)
@@ -1547,6 +1560,7 @@ class TrainingWidget(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, "选择数据集配置文件", "", "YAML (*.yaml *.yml);;All (*)")
         if path:
             self.data_yaml_edit.setText(path)
+            remember_last_data_yaml(path)
             self._validate_current_yaml(path)
 
     def _generate_yaml(self):
@@ -1558,6 +1572,7 @@ class TrainingWidget(QWidget):
             QMessageBox.warning(self, "生成失败", "未找到图片目录，无法生成 data.yaml。\n请确保数据集包含 images/ 目录。")
             return
         self.data_yaml_edit.setText(yaml_path)
+        remember_last_data_yaml(yaml_path)
         if consistency and not consistency.ok:
             self._show_yaml_issues(consistency)
         else:
@@ -1577,9 +1592,49 @@ class TrainingWidget(QWidget):
                 f"{'...' if len(consistency.names) > 8 else ''}"
             )
             self.data_info_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+            self._update_dataset_status(consistency)
         else:
             self.data_info_label.setText("✅ 已加载")
             self.data_info_label.setStyleSheet("color: #27ae60;")
+
+    def _update_dataset_status(self, consistency):
+        """更新主窗口状态栏数据集信息"""
+        try:
+            mw = self.window()
+            if hasattr(mw, 'dataset_info_label'):
+                # 统计图片数
+                import os, yaml
+                data_yaml = self.data_yaml_edit.text()
+                img_count = 0
+                img_size = '?'
+                if os.path.isfile(data_yaml):
+                    with open(data_yaml, 'r') as f:
+                        cfg = yaml.safe_load(f)
+                    base = cfg.get('path', os.path.dirname(data_yaml))
+                    if not os.path.isabs(base):
+                        base = os.path.join(os.path.dirname(data_yaml), base)
+                    for key in ('train', 'val'):
+                        d = cfg.get(key, '')
+                        if not os.path.isabs(d):
+                            d = os.path.join(base, d)
+                        if os.path.isdir(d):
+                            for f in os.listdir(d):
+                                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
+                                    img_count += 1
+                                    if img_count == 1 and img_size == '?':
+                                        try:
+                                            import cv2
+                                            sample = cv2.imread(os.path.join(d, f))
+                                            if sample is not None:
+                                                img_size = str(max(sample.shape[:2]))
+                                        except Exception:
+                                            pass
+                nc = consistency.nc if consistency else 0
+                mw.dataset_info_label.setText(
+                    f"Dataset: {img_count} imgs | {nc} classes | img sz {img_size}"
+                )
+        except Exception:
+            pass
 
     def _show_yaml_issues(self, consistency):
         parts = [f"nc={consistency.nc}, names×{len(consistency.names)}"]
@@ -1739,16 +1794,32 @@ class TrainingWidget(QWidget):
             scrollbar.setValue(scrollbar.maximum())
 
     def _export_log(self):
-        """导出训练日志到文件"""
+        """导出训练日志到文件（含参数 + 结果快照）"""
         text = self.log_text.toPlainText()
         if not text.strip():
             return
-        from utils.config import get_work_dir
         import datetime
         d = os.path.join(get_work_dir(), 'training_logs')
         os.makedirs(d, exist_ok=True)
-        p = os.path.join(d, f'train_log_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.txt')
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        p = os.path.join(d, f'train_log_{ts}.txt')
         with open(p, 'w', encoding='utf-8') as f:
+            f.write(f"# YOLO CODE 训练日志 — {ts}\n")
+            f.write(f"# 数据集: {self.data_yaml_edit.text()}\n")
+            f.write(f"# 模型: {self.model_combo.currentText()}\n")
+            f.write(f"# Epochs: {self.epochs_spin.value()} | "
+                    f"Batch: {self.batch_spin.value()} | "
+                    f"ImgSz: {self.imgsz_spin.value()} | "
+                    f"LR: {self.lr_spin.value()}\n")
+            f.write(f"# 设备: {self.device_combo.currentText()} | "
+                    f"Workers: {self.workers_spin.value()}\n")
+            metrics = self.manager.get_training_metrics()
+            best = metrics.get('best_metrics', {})
+            if best:
+                f.write(f"# 结果: mAP50={best.get('mAP50',0):.4f} "
+                        f"mAP50-95={best.get('mAP50-95',0):.4f} "
+                        f"box_loss={best.get('box_loss',0):.4f}\n")
+            f.write("#" + "─" * 50 + "\n\n")
             f.write(text)
         QMessageBox.information(self, "导出完成", f"日志已保存至:\n{p}")
 
@@ -2291,8 +2362,34 @@ class InferenceWidget(QWidget):
                 QMessageBox.critical(self, "错误", error)
                 return
             el = (time.time() - t0) * 1000
+
+            # ── 记录推理参数（可回溯） ──
+            param_log = (
+                f"[推理] {Path(img_path).name} | "
+                f"模型: {Path(self.manager.model_path).name if self.manager.model_path else '?'} | "
+                f"conf={self.manager.conf_threshold:.2f} | "
+                f"imgsz={self.infer_imgsz_spin.value()} | "
+                f"耗时={el:.0f}ms"
+            )
+            print(param_log)  # 终端可回溯
+
+            detections = result[1] if result else []
             self.inference_time_label.setText(f"⏱ {el:.0f}ms  |  {self.infer_imgsz_spin.value()}px")
-            self._show_result(result[0] if result else None, result[1] if result else [])
+            self._show_result(result[0] if result else None, detections)
+
+            # ── 无检测框时提示 ──
+            if len(detections) == 0:
+                conf_val = self.manager.conf_threshold
+                QMessageBox.information(
+                    self, "未检测到目标",
+                    f"当前图片未检测到任何目标。\n\n"
+                    f"可尝试以下操作：\n"
+                    f"  • 降低置信度阈值（当前 conf={conf_val:.2f}）\n"
+                    f"  • 确认模型类别与图片内容匹配\n"
+                    f"  • 检查图片是否正常加载\n\n"
+                    f"{param_log}"
+                )
+
             if self.save_result_check.isChecked():
                 self._save_inference_image(result[0] if result else None)
 
@@ -3727,6 +3824,11 @@ class MainWindow(QMainWindow):
         self.version_label = QLabel()
         self.version_label.setStyleSheet("font-size: 12px; color: #aaa;")
         status_layout.addWidget(self.version_label)
+
+        # 数据集信息
+        self.dataset_info_label = QLabel()
+        self.dataset_info_label.setStyleSheet("font-size: 12px; color: #888;")
+        status_layout.addWidget(self.dataset_info_label)
 
         status_layout.addStretch()
 

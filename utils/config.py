@@ -7,6 +7,9 @@ _config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.yolo_c
 
 _default_config = {
     'work_dir': '',
+    'last_data_yaml': '',
+    'last_model': 'yolov8n',
+    'last_work_dir': '',
 }
 
 
@@ -103,3 +106,32 @@ def auto_scan(work_dir=None):
             })
 
     return result
+
+
+def remember(key, value):
+    """记忆任意键值"""
+    cfg = load_config()
+    cfg[key] = value
+    save_config(cfg)
+
+
+def recall(key, default=None):
+    """召回记忆的值"""
+    cfg = load_config()
+    return cfg.get(key, default)
+
+
+def remember_last_data_yaml(path):
+    remember('last_data_yaml', path)
+
+
+def recall_last_data_yaml():
+    return recall('last_data_yaml', '')
+
+
+def remember_last_model(name):
+    remember('last_model', name)
+
+
+def recall_last_model():
+    return recall('last_model', 'yolov8n')
