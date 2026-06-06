@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QTreeWidgetItem, QTableWidget, QTableWidgetItem, QListWidget,
     QListWidgetItem, QScrollArea, QToolBar, QToolButton, QSizePolicy,
     QHeaderView, QRadioButton, QButtonGroup, QGridLayout, QDialog,
-    QStackedWidget, QShortcut
+    QStackedWidget, QShortcut, QInputDialog
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
 from PyQt5.QtGui import (
@@ -390,6 +390,98 @@ NavButton:checked {
 }
 """
 
+# ── 深色主题 ────────────────────────────────────────────────
+
+DARK_STYLE = """
+QMainWindow { background-color: #1e1e1e; }
+QWidget { background-color: #1e1e1e; color: #d4d4d4; font-size: 15px; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
+QTabWidget::pane { border: 1px solid #3d3d3d; background-color: #2d2d2d; }
+QTabBar::tab { background-color: #2d2d2d; color: #999; padding: 12px 20px; margin-right: 1px; border: 1px solid #3d3d3d; font-weight: bold; }
+QTabBar::tab:selected { background-color: #1e1e1e; color: #ff8c00; border-bottom: 3px solid #ff8c00; }
+QTabBar::tab:hover:!selected { background-color: #3a3a3a; color: #ffa500; }
+QGroupBox { border: 1px solid #3d3d3d; border-radius: 6px; margin-top: 10px; padding: 14px 10px 10px 10px; font-size: 15px; color: #999; background-color: #2d2d2d; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #ff8c00; font-size: 14px; }
+QPushButton { background-color: #3d3d3d; color: #ff8c00; border: 1px solid #4d4d4d; border-radius: 4px; padding: 5px 14px; font-size: 14px; min-width: 60px; }
+QPushButton:hover { background-color: #4d4d4d; color: #ffa500; border-color: #ff8c00; }
+QPushButton:pressed { background-color: #5a5a5a; }
+QPushButton:disabled { background-color: #2d2d2d; color: #666; border-color: #3d3d3d; }
+QPushButton#btnTrain { background-color: #ff6b00; color: #fff; border: none; font-size: 15px; padding: 7px 22px; }
+QPushButton#btnTrain:hover { background-color: #e65c00; }
+QPushButton#btnStop { background-color: #666; color: #fff; border: none; }
+QPushButton#btnStop:hover { background-color: #555; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background-color: #3d3d3d; border: 1px solid #555; border-radius: 3px; padding: 5px 8px; color: #d4d4d4; }
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus { border-color: #ff8c00; }
+QComboBox::drop-down { border: none; padding-right: 8px; }
+QComboBox QAbstractItemView { background-color: #3d3d3d; border: 1px solid #555; color: #d4d4d4; selection-background-color: #5a5a5a; }
+QTreeWidget, QListWidget, QTableWidget { background-color: #2d2d2d; border: 1px solid #3d3d3d; color: #d4d4d4; alternate-background-color: #333; }
+QTreeWidget::item:selected, QListWidget::item:selected, QTableWidget::item:selected { background-color: #5a5a5a; color: #ff8c00; }
+QTreeWidget::item:hover, QListWidget::item:hover { background-color: #3a3a3a; }
+QHeaderView::section { background-color: #e65c00; color: #fff; padding: 5px; border: 1px solid #4d4d4d; font-weight: bold; }
+QScrollBar:vertical { background-color: #2d2d2d; width: 10px; border-radius: 5px; }
+QScrollBar::handle:vertical { background-color: #555; border-radius: 5px; min-height: 30px; }
+QScrollBar::handle:vertical:hover { background-color: #ff8c00; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal { background-color: #2d2d2d; height: 10px; border-radius: 5px; }
+QScrollBar::handle:horizontal { background-color: #555; border-radius: 5px; }
+QScrollBar::handle:horizontal:hover { background-color: #ff8c00; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QProgressBar { background-color: #3d3d3d; border: 1px solid #555; border-radius: 4px; text-align: center; color: #d4d4d4; height: 20px; }
+QProgressBar::chunk { background-color: #ff6b00; border-radius: 3px; }
+QTextEdit, QPlainTextEdit { background-color: #2d2d2d; border: 1px solid #3d3d3d; color: #d4d4d4; font-family: "Consolas", "Courier New", monospace; }
+QSlider::groove:horizontal { background: #555; height: 6px; border-radius: 3px; }
+QSlider::handle:horizontal { background: #ff6b00; width: 16px; margin: -5px 0; border-radius: 8px; }
+QSlider::handle:horizontal:hover { background: #e65c00; }
+QSlider::sub-page:horizontal { background: #ff8c00; border-radius: 3px; }
+QStatusBar { background-color: #2d2d2d; color: #999; border-top: 1px solid #3d3d3d; }
+QMenuBar { background-color: #2d2d2d; color: #999; border-bottom: 1px solid #3d3d3d; }
+QMenuBar::item:selected { background-color: #3d3d3d; color: #ff8c00; }
+QMenu { background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #3d3d3d; }
+QMenu::item:selected { background-color: #3d3d3d; color: #ff8c00; }
+QToolBar { background-color: #2d2d2d; border-bottom: 1px solid #3d3d3d; spacing: 5px; padding: 3px; }
+QToolButton { background-color: transparent; color: #999; border: 1px solid transparent; border-radius: 3px; padding: 5px 10px; }
+QToolButton:hover { background-color: #3d3d3d; border-color: #555; }
+QCheckBox { spacing: 5px; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid #555; border-radius: 3px; background-color: #3d3d3d; }
+QCheckBox::indicator:checked { background-color: #ff6b00; border-color: #ff6b00; }
+QRadioButton::indicator { width: 16px; height: 16px; border-radius: 8px; border: 2px solid #555; background-color: #3d3d3d; }
+QRadioButton::indicator:checked { background-color: #ff6b00; border-color: #ff6b00; }
+QSplitter::handle { background-color: #3d3d3d; width: 2px; height: 2px; }
+QSpinBox::up-button, QDoubleSpinBox::up-button { background-color: #3d3d3d; border-radius: 2px; }
+QSpinBox::down-button, QDoubleSpinBox::down-button { background-color: #3d3d3d; border-radius: 2px; }
+QLabel#titleLabel { font-size: 18px; font-weight: bold; color: #ff8c00; padding: 5px; }
+QLabel#subtitleLabel { font-size: 14px; color: #888; }
+"""
+
+DARK_SIDEBAR_STYLE = """
+QWidget#sidebar { background-color: #141414; }
+QWidget#logoWidget { background-color: #141414; }
+QLabel#logoTitle { font-size: 20px; font-weight: bold; color: #fff; padding: 2px 0; background: transparent; }
+QLabel#logoSub { font-size: 13px; color: #888; padding: 0; background: transparent; }
+QFrame#sidebarSep { color: #2a2a2a; background-color: #2a2a2a; max-height: 1px; margin: 6px 15px; }
+QFrame#sidebarBorder { color: #2a2a2a; background-color: #2a2a2a; max-width: 1px; }
+QWidget#contentStack { background-color: #1e1e1e; }
+QLabel#versionLabel { font-size: 12px; color: #888; background: transparent; padding: 4px; }
+NavButton { background-color: transparent; color: #888; border: none; border-radius: 0px; text-align: left; padding: 9px 18px; font-size: 14px; font-weight: normal; min-width: 0px; }
+NavButton:hover { background-color: #2a2a2a; color: #fff; }
+NavButton:checked { background-color: #ff6b00; color: #fff; font-weight: bold; }
+"""
+
+_theme_state = {'current': 'light'}
+
+def toggle_theme():
+    _theme_state['current'] = 'dark' if _theme_state['current'] == 'light' else 'light'
+    return _theme_state['current']
+
+def get_theme():
+    return _theme_state['current']
+
+def get_current_style():
+    if _theme_state['current'] == 'dark':
+        return DARK_STYLE + DARK_SIDEBAR_STYLE
+    return ORANGE_WHITE_STYLE + SIDEBAR_STYLE
+
+
+
 
 
 class AnnotationWidget(QWidget):
@@ -467,6 +559,18 @@ class AnnotationWidget(QWidget):
         save_anno_btn = QPushButton("保存所有标注")
         save_anno_btn.clicked.connect(self._save_annotations)
         left_layout.addWidget(save_anno_btn)
+
+        # 质量检查 + 批量重命名
+        quality_btn = QPushButton("标注质量检查")
+        quality_btn.setToolTip("检查漏标、空标、异常框")
+        quality_btn.clicked.connect(self._check_quality)
+        left_layout.addWidget(quality_btn)
+
+        rename_btn = QPushButton("批量重命名")
+        rename_btn.setToolTip("图片按序号批量重命名")
+        rename_btn.clicked.connect(self._batch_rename)
+        left_layout.addWidget(rename_btn)
+
         left_layout.addStretch()
 
         # ── 中间面板 ──
@@ -991,6 +1095,47 @@ class AnnotationWidget(QWidget):
             f"当前图片已加入废弃列表: discarded.txt"
         )
 
+    def _check_quality(self):
+        """标注质量检查"""
+        if not self.manager.dataset_dir:
+            QMessageBox.warning(self, "提示", "请先打开数据集目录")
+            return
+        from utils.validator import check_annotation_quality
+        result = check_annotation_quality(self.manager.dataset_dir)
+        msg = (
+            f"总图片: {result['total_images']}  已标注: {result['annotated_images']}\n"
+            f"漏标(有图无标): {len(result['missing_labels'])} 张\n"
+            f"空标注文件: {len(result['empty_labels'])} 个\n"
+            f"异常大框(w/h>0.5): {len(result['oversized_boxes'])} 个\n"
+            f"异常小框(<0.001): {len(result['tiny_boxes'])} 个\n"
+            f"孤立标注(无对应图片): {len(result['orphan_labels'])} 个\n"
+            f"类别分布: {dict(result['class_distribution'])}"
+        )
+        QMessageBox.information(self, "标注质量检查", msg)
+
+    def _batch_rename(self):
+        """批量重命名图片（按序号）"""
+        if not self.manager.dataset_dir:
+            QMessageBox.warning(self, "提示", "请先打开数据集目录")
+            return
+        prefix, ok = QInputDialog.getText(self, "批量重命名", "输入文件名前缀:")
+        if not ok or not prefix.strip():
+            return
+        prefix = prefix.strip()
+        images_dir = os.path.join(self.manager.dataset_dir, 'images')
+        if not os.path.isdir(images_dir):
+            images_dir = self.manager.dataset_dir
+        ext_set = {'.jpg', '.jpeg', '.png', '.bmp'}
+        images = sorted([f for f in os.listdir(images_dir) if Path(f).suffix.lower() in ext_set])
+        renamed = 0
+        for i, fname in enumerate(images, 1):
+            old = os.path.join(images_dir, fname)
+            new = os.path.join(images_dir, f"{prefix}_{i:04d}{Path(fname).suffix}")
+            if old != new:
+                os.rename(old, new)
+                renamed += 1
+        QMessageBox.information(self, "完成", f"已重命名 {renamed} 个文件\n格式: {prefix}_0001.jpg ...")
+
 
 # ── 数据集验证对话框 ────────────────────────────────────────
 
@@ -1349,6 +1494,11 @@ class TrainingWidget(QWidget):
         self.augment_check.setChecked(True)
         params_layout.addWidget(self.augment_check, 5, 0)
 
+        self.augment_preview_btn = QPushButton("预览增强效果")
+        self.augment_preview_btn.setToolTip("预览数据增强效果（需加载 data.yaml）")
+        self.augment_preview_btn.clicked.connect(self._preview_augment)
+        params_layout.addWidget(self.augment_preview_btn, 5, 2, 1, 2)
+
         self.cos_lr_check = QCheckBox("余弦学习率衰减")
         params_layout.addWidget(self.cos_lr_check, 5, 1)
 
@@ -1671,6 +1821,48 @@ class TrainingWidget(QWidget):
             self._detect_environment()
 
     # ========== 训练操作 ==========
+
+    def _preview_augment(self):
+        """数据增强效果预览"""
+        data_yaml = self.data_yaml_edit.text()
+        if not data_yaml or not Path(data_yaml).exists():
+            QMessageBox.warning(self, "提示", "请先选择数据集")
+            return
+        try:
+            import yaml, random
+            with open(data_yaml, 'r') as f:
+                cfg = yaml.safe_load(f)
+            base = cfg.get('path', os.path.dirname(data_yaml))
+            if not os.path.isabs(base):
+                base = os.path.join(os.path.dirname(data_yaml), base)
+            train_dir = os.path.join(base, cfg.get('train', 'images/train'))
+            images = [f for f in os.listdir(train_dir) if f.lower().endswith(('.jpg', '.png', '.bmp'))]
+            if not images:
+                QMessageBox.warning(self, "提示", "训练目录无图片"); return
+            img_path = os.path.join(train_dir, random.choice(images))
+            img = cv2.imread(img_path)
+            if img is None: return
+            previews = [
+                ("原图", img.copy()), ("水平翻转", cv2.flip(img, 1)),
+                ("亮度+30", cv2.convertScaleAbs(img, alpha=1, beta=30)),
+                ("亮度-30", cv2.convertScaleAbs(img, alpha=1, beta=-30)),
+                ("HSV抖动", cv2.cvtColor(cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32) +
+                 np.array([random.randint(-20,20), random.randint(-30,30), 0], dtype=np.float32),
+                 cv2.COLOR_HSV2BGR).clip(0,255).astype(np.uint8)),
+            ]
+            grid = np.zeros((320, 720, 3), dtype=np.uint8) + 200
+            for i, (label, pimg) in enumerate(previews):
+                r, c = i // 3, i % 3
+                ph = pimg.shape[0] / max(pimg.shape[1], 1)
+                nh, nw = 150, min(230, int(150/ph)) if ph > 0 else 230
+                resized = cv2.resize(pimg, (nw, nh))
+                y, x = r * 160, c * 240
+                grid[y:y+nh, x:x+nw] = resized
+                cv2.putText(grid, label, (x+5, y+nh+20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1)
+            cv2.imshow("数据增强预览 (按任意键关闭)", grid)
+            cv2.waitKey(0); cv2.destroyAllWindows()
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"预览失败: {e}")
 
     def _browse_data(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择数据集配置文件", "", "YAML (*.yaml *.yml);;All (*)")
@@ -4222,7 +4414,7 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         # 设置样式
-        self.setStyleSheet(ORANGE_WHITE_STYLE + SIDEBAR_STYLE)
+        self.setStyleSheet(get_current_style())
 
         # 菜单栏
         menubar = self.menuBar()
@@ -4240,9 +4432,16 @@ class MainWindow(QMainWindow):
         exit_act.triggered.connect(self.close)
         file_menu.addAction(exit_act)
 
+        # 视图菜单
+        view_menu = menubar.addMenu("视图(&V)")
+        self.theme_action = QAction("切换深色主题", self)
+        self.theme_action.setShortcut("Ctrl+T")
+        self.theme_action.triggered.connect(self._toggle_theme)
+        view_menu.addAction(self.theme_action)
+
         help_menu = menubar.addMenu("帮助(&H)")
         about_act = QAction("关于", self)
-        about_act.triggered.connect(lambda: self._switch_page(7))  # 关于
+        about_act.triggered.connect(lambda: self._switch_page(7))
         help_menu.addAction(about_act)
 
         # 主布局：侧边栏 + 内容区
@@ -4513,3 +4712,8 @@ class MainWindow(QMainWindow):
 
     def _save_annotation_menu(self):
         self.annotation_widget._save_annotations()
+
+    def _toggle_theme(self):
+        new = toggle_theme()
+        self.setStyleSheet(get_current_style())
+        self.theme_action.setText("切换浅色主题" if new == 'dark' else "切换深色主题")

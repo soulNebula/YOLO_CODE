@@ -436,3 +436,93 @@ def auto_generate_yaml(dataset_dir, train_rel='images/train', val_rel='images/va
     # 4. 校验生成结果
     consistency = validate_yaml_consistency(yaml_path)
     return yaml_path, consistency
+
+
+# ── 标注质量检查 ────────────────────────────────────────────
+
+def check_annotation_quality(dataset_dir):
+    """标注质量检查：漏标检测、标签一致性、异常框检测
+
+    返回 dict:
+        missing_labels: 有图片无标注的文件列表
+        empty_labels: 空标注文件列表
+        oversized_boxes: 异常大框列表 (w/h > 0.5)
+        tiny_boxes: 异常小框列表 (w*h < 0.001)
+        class_distribution: {class_name: count}
+        total_images: 总图片数
+        annotated_images: 有标注图片数
+        orphan_labels: 有标注无图片的文件列表
+    """
+    ext_set = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'}
+    result = {
+        'missing_labels': [], 'empty_labels': [], 'oversized_boxes': [],
+        'tiny_boxes': [], 'class_distribution': {}, 'total_images': 0,
+        'annotated_images': 0, 'orphan_labels': []
+    }
+
+    # 收集图片
+    img_stems = {}
+    for sub in ['images', '']:
+        d = os.path.join(dataset_dir, sub) if sub else dataset_dir
+        if os.path.isdir(d):
+            for f in os.listdir(d):
+                if Path(f).suffix.lower() in ext_set:
+                    img_stems[Path(f).stem] = os.path.join(d, f)
+    result['total_images'] = len(img_stems)
+
+    # 收集标签
+    labels_dir = os.path.join(dataset_dir, 'labels')
+    if not os.path.isdir(labels_dir):
+        result['missing_labels'] = list(img_stems.keys())
+        return result
+
+    label_stems = {}
+    for f in os.listdir(labels_dir):
+        if f.endswith('.txt'):
+            label_stems[Path(f).stem] = os.path.join(labels_dir, f)
+
+    # classes.txt
+    classes = []
+    classes_txt = os.path.join(dataset_dir, 'classes.txt')
+    if os.path.isfile(classes_txt):
+        with open(classes_txt, 'r', encoding='utf-8') as f:
+            classes = [l.strip() for l in f if l.strip()]
+
+    # 逐标签检查
+    for stem, lpath in label_stems.items():
+        if stem not in img_stems:
+            result['orphan_labels'].append(lpath)
+            continue
+
+        with open(lpath, 'r') as f:
+            lines = [l.strip() for l in f if l.strip()]
+
+        if not lines:
+            result['empty_labels'].append(lpath)
+            continue
+
+        result['annotated_images'] += 1
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            try:
+                cls_id = int(parts[0])
+                _, _, w, h = map(float, parts[1:5])
+            except ValueError:
+                continue
+
+            cls_name = classes[cls_id] if cls_id < len(classes) else f"cls_{cls_id}"
+            result['class_distribution'][cls_name] = result['class_distribution'].get(cls_name, 0) + 1
+
+            if w > 0.5 or h > 0.5:
+                result['oversized_boxes'].append({'file': lpath, 'class': cls_name, 'w': w, 'h': h})
+            if w * h < 0.001 and w > 0 and h > 0:
+                result['tiny_boxes'].append({'file': lpath, 'class': cls_name, 'w': w, 'h': h})
+
+    # 漏标：有图片无标签
+    for stem in img_stems:
+        if stem not in label_stems:
+            result['missing_labels'].append(img_stems[stem])
+
+    return result
