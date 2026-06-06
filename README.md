@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2-orange" alt="version" />
+  <img src="https://img.shields.io/badge/version-1.8-orange" alt="version" />
   <img src="https://img.shields.io/badge/python-3.10+-blue" alt="python" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="platform" />
@@ -41,11 +41,11 @@
 | 模块 | 描述 |
 |------|------|
 | 📊 **仪表盘** | 项目概览、工作目录管理、系统状态、快捷操作 |
-| 📝 **手动标注** | YOLO 格式标注，四角拖拽缩放，拖拽模式，自动保存 |
-| 📁 **数据集** | 创建/导入数据集，训练/验证/测试集分割，多格式导出 |
-| 🚀 **模型训练** | 环境检测修复、YOLO 训练、实时曲线、指标监控 |
-| 🔍 **模型推理** | 图片/视频/摄像头检测，结果导出 CSV/JSON |
-| 📈 **模型评估** | mAP/Precision/Recall 评估，模型对比分析 |
+| 📝 **手动标注** | YOLO 格式标注，四角拖拽缩放，长宽比锁定，拖拽模式，标签过滤，质量检查 |
+| 📁 **数据集** | 创建/导入数据集，训练/验证/测试集分割，自动生成 data.yaml |
+| 🚀 **模型训练** | 环境检测修复、YOLO 训练、实时曲线、指标监控、数据增强预览 |
+| 🔍 **模型推理** | 图片/视频/摄像头检测，Benchmark 速度测试，裁剪保存，多格式导出 |
+| 📈 **模型评估** | Per-class 指标，混淆矩阵，误检/漏检分析，多模型对比 |
 | 📤 **模型导出** | ONNX / TensorRT / OpenVINO / TFLite / TorchScript / CoreML |
 | 💻 **终端** | Linux 风格命令行，支持 pip / Python / 系统命令 |
 
@@ -148,8 +148,9 @@ python start.py
 2. 浏览选择训练好的 `.pt` 模型并加载
 3. 选择输入源（图片 / 视频 / 摄像头）
 4. 调整置信度阈值
-5. 点击 "开始推理" 查看检测结果
-6. 可导出结果为 CSV 或 JSON
+5. 调整参数（conf、iou、max_det 等），点击 "开始推理" 查看检测结果
+6. 可导出结果为 CSV、JSON，或按类别裁剪保存小图
+7. 点击 ⚡Benchmark 测试推理速度和显存占用
 
 ### 第六步：评估与部署
 
@@ -188,16 +189,19 @@ python start.py
 | 拖拽四角手柄 | 缩放标注框 |
 | 鼠标左键拖拽框 | 移动标注框 |
 | 鼠标滚轮 | 缩放图片 |
-| **M** / **N** | 拖拽模式 / 标注模式 |
+| **M** / **N** | 拖拽模式（平移画面）/ 标注模式 |
 | **A** / **D** 或 **←** / **→** | 上一张 / 下一张图片 |
+| **X** | 标记当前图片为废弃 |
 | **Delete** | 删除选中标注框 |
 | **Esc** | 取消当前绘制 / 取消选中 |
 | 右键 / 双击框 | 编辑标注类别 |
-| **Ctrl + C** / **Ctrl + V** | 复制 / 粘贴标注 |
+| **Ctrl + C** / **Ctrl + V** | 复制当前图片全部标注 / 粘贴 |
+| **Ctrl + Shift + C** | 复制上一帧标注框（视频抽帧标注） |
 | **Ctrl + D** | 复制选中标注框 |
 | **Ctrl + F** / **Ctrl + Shift + F** | 适应窗口 / 适应宽度 |
 | **Ctrl + 0** | 重置缩放至 100% |
 | **Ctrl + H** | 隐藏 / 显示标注框 |
+| **Ctrl + T** | 切换深色 / 浅色主题 |
 | **方向键** | 微移选中框（Shift 加速 ×10） |
 
 ---
@@ -279,6 +283,18 @@ YOLO_CODE/
 
 ---
 
+## 📚 详细文档
+
+| 文档 | 说明 |
+|------|------|
+| [安装配置指南](docs/INSTALL.md) | 系统要求、详细安装步骤、配置说明 |
+| [API 文档](docs/API.md) | 核心模块 API 参考 |
+| [常见问题 FAQ](docs/FAQ.md) | 20+ 常见问题解答 |
+| [故障排查指南](docs/TROUBLESHOOTING.md) | 启动/PyTorch/训练/推理问题排查 |
+| [二次开发指南](docs/DEV_GUIDE.md) | 项目架构、开发原则、添加功能 |
+
+---
+
 ## 📧 联系方式
 
 如有问题或建议，欢迎联系：
@@ -288,5 +304,5 @@ YOLO_CODE/
 ---
 
 <p align="center">
-  <strong>YOLO CODE</strong> v1.2 — Built with Ultralytics YOLO + PyQt5 + Matplotlib
+  <strong>YOLO CODE</strong> v1.8 — Built with Ultralytics YOLO + PyQt5 + Matplotlib
 </p>

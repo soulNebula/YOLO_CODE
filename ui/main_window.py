@@ -47,7 +47,7 @@ QMainWindow {
 QWidget {
     background-color: #fafafa;
     color: #333333;
-    font-size: 16px;
+    font-size: 17px;
     font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
 }
 QTabWidget::pane {
@@ -77,7 +77,7 @@ QGroupBox {
     margin-top: 10px;
     padding: 16px 14px 14px 14px;
     font-weight: normal;
-    font-size: 16px;
+    font-size: 17px;
     color: #555555;
     background-color: #ffffff;
 }
@@ -93,7 +93,7 @@ QPushButton {
     color: #ff6b00;
     border: 1px solid #e0e0e0;
     border-radius: 4px;
-    padding: 6px 16px;
+    padding: 7px 18px;
     font-size: 15px;
     font-weight: normal;
     min-width: 60px;
@@ -115,7 +115,7 @@ QPushButton#btnTrain {
     background-color: #ff6b00;
     color: #ffffff;
     border: none;
-    font-size: 16px;
+    font-size: 17px;
     padding: 7px 22px;
 }
 QPushButton#btnTrain:hover {
@@ -134,7 +134,8 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     background-color: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 3px;
-    padding: 6px 10px;
+    padding: 7px 10px;
+    min-height: 20px;
     color: #333333;
 }
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
@@ -394,22 +395,22 @@ NavButton:checked {
 
 DARK_STYLE = """
 QMainWindow { background-color: #1e1e1e; }
-QWidget { background-color: #1e1e1e; color: #d4d4d4; font-size: 16px; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
+QWidget { background-color: #1e1e1e; color: #d4d4d4; font-size: 17px; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
 QTabWidget::pane { border: 1px solid #3d3d3d; background-color: #2d2d2d; }
 QTabBar::tab { background-color: #2d2d2d; color: #999; padding: 12px 20px; margin-right: 1px; border: 1px solid #3d3d3d; font-weight: bold; }
 QTabBar::tab:selected { background-color: #1e1e1e; color: #ff8c00; border-bottom: 3px solid #ff8c00; }
 QTabBar::tab:hover:!selected { background-color: #3a3a3a; color: #ffa500; }
-QGroupBox { border: 1px solid #3d3d3d; border-radius: 6px; margin-top: 10px; padding: 16px 14px 14px 14px; font-size: 16px; color: #999; background-color: #2d2d2d; }
+QGroupBox { border: 1px solid #3d3d3d; border-radius: 6px; margin-top: 10px; padding: 16px 14px 14px 14px; font-size: 17px; color: #999; background-color: #2d2d2d; }
 QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #ff8c00; font-size: 15px; }
-QPushButton { background-color: #3d3d3d; color: #ff8c00; border: 1px solid #4d4d4d; border-radius: 4px; padding: 6px 16px; font-size: 15px; min-width: 60px; }
+QPushButton { background-color: #3d3d3d; color: #ff8c00; border: 1px solid #4d4d4d; border-radius: 4px; padding: 7px 18px; font-size: 15px; min-width: 60px; }
 QPushButton:hover { background-color: #4d4d4d; color: #ffa500; border-color: #ff8c00; }
 QPushButton:pressed { background-color: #5a5a5a; }
 QPushButton:disabled { background-color: #2d2d2d; color: #666; border-color: #3d3d3d; }
-QPushButton#btnTrain { background-color: #ff6b00; color: #fff; border: none; font-size: 16px; padding: 7px 22px; }
+QPushButton#btnTrain { background-color: #ff6b00; color: #fff; border: none; font-size: 17px; padding: 7px 22px; }
 QPushButton#btnTrain:hover { background-color: #e65c00; }
 QPushButton#btnStop { background-color: #666; color: #fff; border: none; }
 QPushButton#btnStop:hover { background-color: #555; }
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background-color: #3d3d3d; border: 1px solid #555; border-radius: 3px; padding: 6px 10px; color: #d4d4d4; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background-color: #3d3d3d; border: 1px solid #555; border-radius: 3px; padding: 7px 10px; min-height: 20px; color: #d4d4d4; }
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus { border-color: #ff8c00; }
 QComboBox::drop-down { border: none; padding-right: 8px; }
 QComboBox QAbstractItemView { background-color: #3d3d3d; border: 1px solid #555; color: #d4d4d4; selection-background-color: #5a5a5a; }
@@ -1314,7 +1315,7 @@ class TrainingWidget(QWidget):
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setStyleSheet("""
             QTabWidget::pane { border: 1px solid #e0e0e0; background: #fafafa; }
-            QTabBar::tab { padding: 10px 20px; font-size: 16px; }
+            QTabBar::tab { padding: 10px 20px; font-size: 17px; }
             QTabBar::tab:selected { color: #ff6b00; border-bottom: 3px solid #ff6b00; font-weight: bold; }
         """)
 
@@ -1323,54 +1324,45 @@ class TrainingWidget(QWidget):
         config_outer = QVBoxLayout(config_tab)
         config_outer.setContentsMargins(0, 0, 0, 0)
 
-        mid_splitter = QSplitter(Qt.Horizontal)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(16)
 
-        # 左侧：环境信息面板
-        info_panel = QWidget()
-        info_layout = QVBoxLayout(info_panel)
-        info_layout.setContentsMargins(0, 0, 0, 0)
-
-        sys_group = QGroupBox("系统环境信息")
-        sys_layout = QGridLayout(sys_group)
+        self.sys_group = QGroupBox("▸ 系统环境信息（点击展开）")
+        self.sys_group.setCheckable(True)
+        self.sys_group.setChecked(False)
+        self.sys_group.toggled.connect(lambda on: self.sys_group.setTitle(
+            "▾ 系统环境信息" if on else "▸ 系统环境信息（点击展开）"))
+        sys_grid = QGridLayout(self.sys_group)
+        sys_grid.setVerticalSpacing(6)
+        sys_grid.setHorizontalSpacing(16)
 
         self.env_labels = {}
         env_fields = [
-            ('python_version', 'Python 版本'),
-            ('python_arch', 'Python 架构'),
-            ('pytorch_version', 'PyTorch 版本'),
-            ('pytorch_error', 'PyTorch 状态'),
-            ('cuda_version', 'CUDA 版本'),
-            ('cuda_available', 'CUDA 可用'),
-            ('gpu_count', 'GPU 数量'),
-            ('gpu_names', 'GPU 型号'),
-            ('nvidia_driver', 'NVIDIA 驱动'),
-            ('nvidia_smi_cuda', 'Driver CUDA'),
-            ('vc_redist', 'VC++ Redist'),
-            ('ultralytics_version', 'Ultralytics'),
-            ('opencv_version', 'OpenCV'),
-            ('platform', '系统平台'),
+            ('python_version', 'Python'), ('pytorch_version', 'PyTorch'),
+            ('pytorch_error', '状态'), ('cuda_version', 'CUDA'),
+            ('cuda_available', 'CUDA可用'), ('gpu_count', 'GPU数量'),
+            ('gpu_names', 'GPU'), ('ultralytics_version', 'Ultralytics'),
+            ('opencv_version', 'OpenCV'), ('platform', '系统'),
         ]
         for i, (key, label) in enumerate(env_fields):
+            r, c = i // 2, (i % 2) * 2
             lbl = QLabel(f"{label}:")
             lbl.setStyleSheet("font-weight: bold; color: #555;")
             val = QLabel("---")
             val.setObjectName("subtitleLabel")
-            val.setWordWrap(True)
             self.env_labels[key] = val
-            sys_layout.addWidget(lbl, i, 0)
-            sys_layout.addWidget(val, i, 1)
+            sys_grid.addWidget(lbl, r, c)
+            sys_grid.addWidget(val, r, c + 1)
 
-        info_layout.addWidget(sys_group)
-        info_layout.addStretch()
-        mid_splitter.addWidget(info_panel)
-
-        # 右侧：训练配置
-        config_panel = QWidget()
-        config_layout = QVBoxLayout(config_panel)
-        config_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.addWidget(self.sys_group)
 
         ds_model_group = QGroupBox("数据集 & 模型")
         ds_model_layout = QGridLayout(ds_model_group)
+        ds_model_layout.setVerticalSpacing(12)
 
         ds_model_layout.addWidget(QLabel("数据集:"), 0, 0)
         ds_row = QHBoxLayout()
@@ -1404,145 +1396,73 @@ class TrainingWidget(QWidget):
         model_row.addWidget(self.pretrained_check)
         ds_model_layout.addLayout(model_row, 2, 1)
 
-        config_layout.addWidget(ds_model_group)
+        scroll_layout.addWidget(ds_model_group)
 
         params_group = QGroupBox("训练参数")
         params_layout = QGridLayout(params_group)
+        params_layout.setHorizontalSpacing(24)
+        params_layout.setVerticalSpacing(14)
 
         defaults = get_default_training_params()
 
-        self.epochs_spin = QSpinBox()
-        self.epochs_spin.setRange(1, 1000)
-        self.epochs_spin.setValue(defaults['epochs'])
-        params_layout.addWidget(QLabel("训练轮数:"), 0, 0)
-        params_layout.addWidget(self.epochs_spin, 0, 1)
+        self.epochs_spin = QSpinBox(); self.epochs_spin.setRange(1, 1000); self.epochs_spin.setValue(defaults['epochs'])
+        self.batch_spin = QSpinBox(); self.batch_spin.setRange(1, 256); self.batch_spin.setValue(defaults['batch_size'])
+        params_layout.addWidget(QLabel("训练轮数:"), 0, 0); params_layout.addWidget(self.epochs_spin, 0, 1)
+        params_layout.addWidget(QLabel("批次大小:"), 0, 2); params_layout.addWidget(self.batch_spin, 0, 3)
 
-        self.batch_spin = QSpinBox()
-        self.batch_spin.setRange(1, 256)
-        self.batch_spin.setValue(defaults['batch_size'])
-        params_layout.addWidget(QLabel("批次大小:"), 0, 2)
-        params_layout.addWidget(self.batch_spin, 0, 3)
-
-        # img size: combo + custom
         img_label = QLabel("图片尺寸:")
-        self.imgsz_combo = QComboBox()
-        self.imgsz_combo.addItems(['640', '960', '1280', '自定义'])
-        self.imgsz_combo.setCurrentText(str(defaults['img_size']))
-        self.imgsz_spin = QSpinBox()
-        self.imgsz_spin.setRange(32, 2048)
-        self.imgsz_spin.setValue(defaults['img_size'])
-        self.imgsz_spin.setVisible(False)
-        self.imgsz_combo.currentTextChanged.connect(
-            lambda t: self.imgsz_spin.setVisible(t == '自定义')
-        )
-        img_row = QHBoxLayout()
-        img_row.addWidget(self.imgsz_combo)
-        img_row.addWidget(self.imgsz_spin)
-        params_layout.addWidget(img_label, 1, 0)
-        params_layout.addLayout(img_row, 1, 1)
+        self.imgsz_combo = QComboBox(); self.imgsz_combo.addItems(['640', '960', '1280', '自定义']); self.imgsz_combo.setCurrentText(str(defaults['img_size']))
+        self.imgsz_spin = QSpinBox(); self.imgsz_spin.setRange(32, 2048); self.imgsz_spin.setValue(defaults['img_size']); self.imgsz_spin.setVisible(False)
+        self.imgsz_combo.currentTextChanged.connect(lambda t: self.imgsz_spin.setVisible(t == '自定义'))
+        img_row = QHBoxLayout(); img_row.addWidget(self.imgsz_combo); img_row.addWidget(self.imgsz_spin)
+        self.lr_spin = QDoubleSpinBox(); self.lr_spin.setRange(0.0001, 1.0); self.lr_spin.setValue(defaults['learning_rate']); self.lr_spin.setSingleStep(0.001); self.lr_spin.setDecimals(4)
+        params_layout.addWidget(img_label, 1, 0); params_layout.addLayout(img_row, 1, 1)
+        params_layout.addWidget(QLabel("学习率:"), 1, 2); params_layout.addWidget(self.lr_spin, 1, 3)
 
-        self.lr_spin = QDoubleSpinBox()
-        self.lr_spin.setRange(0.0001, 1.0)
-        self.lr_spin.setValue(defaults['learning_rate'])
-        self.lr_spin.setSingleStep(0.001)
-        self.lr_spin.setDecimals(4)
-        params_layout.addWidget(QLabel("学习率:"), 1, 2)
-        params_layout.addWidget(self.lr_spin, 1, 3)
+        self.warmup_spin = QSpinBox(); self.warmup_spin.setRange(0, 50); self.warmup_spin.setValue(defaults['warmup_epochs'])
+        self.device_combo = QComboBox(); self.device_combo.addItems(['自动选择', 'GPU 0', 'GPU 1', 'CPU'])
+        params_layout.addWidget(QLabel("预热轮数:"), 2, 0); params_layout.addWidget(self.warmup_spin, 2, 1)
+        params_layout.addWidget(QLabel("训练设备:"), 2, 2); params_layout.addWidget(self.device_combo, 2, 3)
 
-        self.warmup_spin = QSpinBox()
-        self.warmup_spin.setRange(0, 50)
-        self.warmup_spin.setValue(defaults['warmup_epochs'])
-        params_layout.addWidget(QLabel("预热轮数:"), 2, 0)
-        params_layout.addWidget(self.warmup_spin, 2, 1)
+        self.optimizer_combo = QComboBox(); self.optimizer_combo.addItems(['auto', 'SGD', 'Adam', 'AdamW']); self.optimizer_combo.setCurrentText(defaults.get('optimizer', 'auto'))
+        self.workers_spin = QSpinBox(); self.workers_spin.setRange(0, 32); self.workers_spin.setValue(defaults['workers'])
+        params_layout.addWidget(QLabel("优化器:"), 3, 0); params_layout.addWidget(self.optimizer_combo, 3, 1)
+        params_layout.addWidget(QLabel("工作线程:"), 3, 2); params_layout.addWidget(self.workers_spin, 3, 3)
 
-        self.device_combo = QComboBox()
-        self.device_combo.addItems(['自动选择', 'GPU 0', 'GPU 1', 'CPU'])
-        params_layout.addWidget(QLabel("训练设备:"), 2, 2)
-        params_layout.addWidget(self.device_combo, 2, 3)
+        self.mosaic_spin = QSpinBox(); self.mosaic_spin.setRange(0, 100); self.mosaic_spin.setValue(defaults.get('close_mosaic', 10)); self.mosaic_spin.setToolTip("最后 N 轮关闭 Mosaic 增强（0=不关闭）")
+        self.seed_spin = QSpinBox(); self.seed_spin.setRange(0, 99999); self.seed_spin.setValue(0); self.seed_spin.setToolTip("固定随机种子（0=随机）"); self.seed_spin.setSpecialValueText("随机")
+        params_layout.addWidget(QLabel("关闭Mosaic:"), 4, 0); params_layout.addWidget(self.mosaic_spin, 4, 1)
+        params_layout.addWidget(QLabel("随机种子:"), 4, 2); params_layout.addWidget(self.seed_spin, 4, 3)
 
-        # 优化器
-        params_layout.addWidget(QLabel("优化器:"), 3, 0)
-        self.optimizer_combo = QComboBox()
-        self.optimizer_combo.addItems(['auto', 'SGD', 'Adam', 'AdamW'])
-        self.optimizer_combo.setCurrentText(defaults.get('optimizer', 'auto'))
-        params_layout.addWidget(self.optimizer_combo, 3, 1)
-
-        self.workers_spin = QSpinBox()
-        self.workers_spin.setRange(0, 32)
-        self.workers_spin.setValue(defaults['workers'])
-        params_layout.addWidget(QLabel("工作线程:"), 3, 2)
-        params_layout.addWidget(self.workers_spin, 3, 3)
-
-        # close_mosaic + seed
-        params_layout.addWidget(QLabel("关闭Mosaic:"), 4, 0)
-        self.mosaic_spin = QSpinBox()
-        self.mosaic_spin.setRange(0, 100)
-        self.mosaic_spin.setValue(defaults.get('close_mosaic', 10))
-        self.mosaic_spin.setToolTip("最后 N 轮关闭 Mosaic 增强（0=不关闭）")
-        params_layout.addWidget(self.mosaic_spin, 4, 1)
-
-        params_layout.addWidget(QLabel("随机种子:"), 4, 2)
-        self.seed_spin = QSpinBox()
-        self.seed_spin.setRange(0, 99999)
-        self.seed_spin.setValue(0)
-        self.seed_spin.setToolTip("固定随机种子（0=随机），确保可复现结果")
-        self.seed_spin.setSpecialValueText("随机")
-        params_layout.addWidget(self.seed_spin, 4, 3)
-
-        # rect + augment + cos_lr
-        self.augment_check = QCheckBox("数据增强")
-        self.augment_check.setChecked(True)
-        params_layout.addWidget(self.augment_check, 5, 0)
-
-        self.augment_preview_btn = QPushButton("预览增强效果")
-        self.augment_preview_btn.setToolTip("预览数据增强效果（需加载 data.yaml）")
-        self.augment_preview_btn.clicked.connect(self._preview_augment)
-        params_layout.addWidget(self.augment_preview_btn, 5, 2, 1, 2)
-
+        self.augment_check = QCheckBox("数据增强"); self.augment_check.setChecked(True)
         self.cos_lr_check = QCheckBox("余弦学习率衰减")
-        params_layout.addWidget(self.cos_lr_check, 5, 1)
+        self.rect_check = QCheckBox("矩形训练"); self.rect_check.setToolTip("矩形推理训练（减少填充，加速训练）")
+        self.augment_preview_btn = QPushButton("预览增强效果"); self.augment_preview_btn.setToolTip("预览数据增强效果"); self.augment_preview_btn.clicked.connect(self._preview_augment)
+        params_layout.addWidget(self.augment_check, 5, 0); params_layout.addWidget(self.cos_lr_check, 5, 1)
+        params_layout.addWidget(self.rect_check, 5, 2); params_layout.addWidget(self.augment_preview_btn, 5, 3)
 
-        self.rect_check = QCheckBox("矩形训练")
-        self.rect_check.setToolTip("矩形推理训练（减少填充，加速训练）")
-        params_layout.addWidget(self.rect_check, 5, 2)
+        scroll_layout.addWidget(params_group)
 
-        config_layout.addWidget(params_group)
-
-        # 高级设置（可折叠/展开）
         self.advanced_group = QGroupBox("高级设置（自定义 args）")
-        self.advanced_group.setCheckable(True)
-        self.advanced_group.setChecked(False)
+        self.advanced_group.setCheckable(True); self.advanced_group.setChecked(False)
         adv_layout = QVBoxLayout(self.advanced_group)
-        self.advanced_args_edit = QTextEdit()
-        self.advanced_args_edit.setMaximumHeight(80)
-        self.advanced_args_edit.setPlaceholderText(
-            "自定义 YOLO 参数，每行一个 key=value:\n"
-            "例:  lr_factor=0.01  label_smoothing=0.1\n"
-            "留空表示不传入额外参数"
-        )
+        self.advanced_args_edit = QTextEdit(); self.advanced_args_edit.setMaximumHeight(80)
+        self.advanced_args_edit.setPlaceholderText("自定义参数，每行 key=value，例: lr_factor=0.01")
         adv_layout.addWidget(self.advanced_args_edit)
-        config_layout.addWidget(self.advanced_group)
+        scroll_layout.addWidget(self.advanced_group)
 
         btn_row = QHBoxLayout()
-        self.train_btn = QPushButton("▶ 开始训练")
-        self.train_btn.setObjectName("btnTrain")
-        self.train_btn.clicked.connect(self._start_training)
-        self.stop_btn = QPushButton("■ 停止训练")
-        self.stop_btn.setObjectName("btnStop")
-        self.stop_btn.clicked.connect(self._stop_training)
-        self.stop_btn.setEnabled(False)
-        btn_row.addWidget(self.train_btn)
-        btn_row.addWidget(self.stop_btn)
-        config_layout.addLayout(btn_row)
+        self.train_btn = QPushButton("▶ 开始训练"); self.train_btn.setObjectName("btnTrain"); self.train_btn.clicked.connect(self._start_training)
+        self.stop_btn = QPushButton("■ 停止训练"); self.stop_btn.setObjectName("btnStop"); self.stop_btn.clicked.connect(self._stop_training); self.stop_btn.setEnabled(False)
+        btn_row.addWidget(self.train_btn); btn_row.addWidget(self.stop_btn)
+        scroll_layout.addLayout(btn_row)
+        scroll_layout.addStretch()
 
-        config_layout.addStretch()
-        mid_splitter.addWidget(config_panel)
-
-        mid_splitter.setStretchFactor(0, 3)
-        mid_splitter.setStretchFactor(1, 4)
-        config_outer.addWidget(mid_splitter)
+        scroll.setWidget(scroll_widget)
+        config_outer.addWidget(scroll)
 
         self.sub_tabs.addTab(config_tab, "⚙ 训练配置")
+
 
         # ---- Tab 1: 训练监控 ----
         monitor_tab = QWidget()
@@ -1566,53 +1486,60 @@ class TrainingWidget(QWidget):
         # 训练曲线 (matplotlib)
         curve_group = QGroupBox("训练曲线")
         curve_layout = QVBoxLayout(curve_group)
-        self.training_figure = Figure(figsize=(6, 4), dpi=80, facecolor='#fafafa')
+        self.training_figure = Figure(figsize=(8, 5), dpi=100, facecolor='#fafafa')
         self.loss_ax = self.training_figure.add_subplot(121)
-        self.loss_ax.set_title('Loss', fontsize=10, color='#333')
+        self.loss_ax.set_title('Loss', fontsize=11, color='#333')
         self.loss_ax.set_xlabel('Epoch')
         self.loss_ax.set_ylabel('Loss')
         self.loss_ax.grid(True, alpha=0.3)
         self.loss_ax.set_facecolor('#ffffff')
         self.metric_ax = self.training_figure.add_subplot(122)
-        self.metric_ax.set_title('mAP', fontsize=10, color='#333')
+        self.metric_ax.set_title('mAP', fontsize=11, color='#333')
         self.metric_ax.set_xlabel('Epoch')
         self.metric_ax.set_ylabel('mAP')
         self.metric_ax.grid(True, alpha=0.3)
         self.metric_ax.set_facecolor('#ffffff')
-        self.training_figure.tight_layout(pad=2)
+        self.training_figure.tight_layout(pad=3)
         self.curve_canvas = FigureCanvas(self.training_figure)
         curve_layout.addWidget(self.curve_canvas)
-        mid_row.addWidget(curve_group, 3)
+        mid_row.addWidget(curve_group, 2)
 
-        # 指标表格 (参数为行，值+最佳为列)
+        # 指标表格 (参数为行，当前+最佳为列)
         table_group = QGroupBox("训练指标")
         table_layout = QVBoxLayout(table_group)
 
         info_row = QHBoxLayout()
         self.metrics_epoch_label = QLabel("Epoch: ---")
-        self.metrics_epoch_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #ff6b00;")
+        self.metrics_epoch_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ff6b00;")
         info_row.addWidget(self.metrics_epoch_label)
         info_row.addStretch()
         table_layout.addLayout(info_row)
 
         self.metrics_table = QTableWidget()
         self.metrics_table.setRowCount(5)
-        self.metrics_table.setColumnCount(2)
-        self.metrics_table.setHorizontalHeaderLabels(['当前值', '最佳值'])
+        self.metrics_table.setColumnCount(3)
+        self.metrics_table.setHorizontalHeaderLabels(['当前值', '最佳值', '指标'])
         self.metrics_table.setVerticalHeaderLabels(['box_loss', 'cls_loss', 'dfl_loss', 'mAP50', 'mAP50-95'])
-        self.metrics_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.metrics_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.metrics_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.metrics_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.metrics_table.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.metrics_table.setAlternatingRowColors(True)
         self.metrics_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.metrics_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.metrics_table.setMaximumHeight(200)
+        font = self.metrics_table.font(); font.setPointSize(11); self.metrics_table.setFont(font)
+        self.metrics_table.verticalHeader().setMinimumWidth(80)
 
-        # 初始化空值
+        # 初始化空值 + 指标名
+        metric_names = ['box_loss', 'cls_loss', 'dfl_loss', 'mAP50', 'mAP50-95']
         for r in range(5):
             for c in range(2):
                 item = QTableWidgetItem('---')
                 item.setTextAlignment(Qt.AlignCenter)
                 self.metrics_table.setItem(r, c, item)
+            name_item = QTableWidgetItem(metric_names[r])
+            name_item.setTextAlignment(Qt.AlignCenter)
+            self.metrics_table.setItem(r, 2, name_item)
 
         table_layout.addWidget(self.metrics_table)
         mid_row.addWidget(table_group, 2)
@@ -1655,7 +1582,7 @@ class TrainingWidget(QWidget):
                 background: #1e1e1e;
                 color: #d4d4d4;
                 font-family: 'Consolas', 'Courier New', 'Microsoft YaHei', monospace;
-                font-size: 16px;
+                font-size: 17px;
                 border: none;
                 padding: 8px 12px;
                 selection-background-color: #264f78;
@@ -1669,7 +1596,7 @@ class TrainingWidget(QWidget):
         toolbar_layout.setContentsMargins(12, 6, 12, 6)
 
         title = QLabel("📋 训练日志")
-        title.setStyleSheet("color: #ddd; font-size: 16px; font-weight: bold; border: none; background: transparent;")
+        title.setStyleSheet("color: #ddd; font-size: 17px; font-weight: bold; border: none; background: transparent;")
         toolbar_layout.addWidget(title)
         self.log_line_count = QLabel("0 行")
         self.log_line_count.setStyleSheet("color: #888; font-size: 13px; border: none; background: transparent;")
@@ -2323,8 +2250,8 @@ class InferenceWidget(QWidget):
         # 参数区
         param_grp = QGroupBox("检测参数")
         p_layout = QGridLayout(param_grp)
-        p_layout.setHorizontalSpacing(18)
-        p_layout.setVerticalSpacing(4)
+        p_layout.setHorizontalSpacing(20)
+        p_layout.setVerticalSpacing(10)
 
         # 置信度
         p_layout.addWidget(QLabel("置信度阈值:"), 0, 0)
@@ -2555,7 +2482,7 @@ class InferenceWidget(QWidget):
         stat_layout.setContentsMargins(10, 4, 10, 4)
 
         self.detect_count_label = QLabel("检测到 0 个目标")
-        self.detect_count_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ff6b00; border: none;")
+        self.detect_count_label.setStyleSheet("font-size: 17px; font-weight: bold; color: #ff6b00; border: none;")
         self.inference_time_label = QLabel("")
         self.inference_time_label.setStyleSheet("color: #999; font-size: 15px; border: none;")
 
@@ -2619,7 +2546,7 @@ class InferenceWidget(QWidget):
         self.detect_table.verticalHeader().setDefaultSectionSize(32)
         self.detect_table.setStyleSheet("""
             QTableWidget {
-                font-size: 16px;
+                font-size: 17px;
                 gridline-color: #e8e8e8;
             }
             QTableWidget::item {
@@ -3592,7 +3519,7 @@ class DashboardWidget(QWidget):
         title = QLabel("YOLO CODE 模型训练平台")
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #333; padding: 5px 0;")
         subtitle = QLabel("一体化标注、训练、推理解决方案")
-        subtitle.setStyleSheet("font-size: 16px; color: #999; padding-bottom: 5px;")
+        subtitle.setStyleSheet("font-size: 17px; color: #999; padding-bottom: 5px;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         title_row.addLayout(title_col)
@@ -3637,7 +3564,7 @@ class DashboardWidget(QWidget):
         wd_path = get_work_dir()
         wd_name = os.path.basename(wd_path.rstrip('/\\')) or wd_path
         self.work_dir_label = QLabel(f"工作目录: <b>{wd_name}</b>")
-        self.work_dir_label.setStyleSheet("font-size: 16px; color: #1565c0; border: none; background: transparent;")
+        self.work_dir_label.setStyleSheet("font-size: 17px; color: #1565c0; border: none; background: transparent;")
         self.work_dir_label.setToolTip(wd_path)
         wd_bar_layout.addWidget(self.work_dir_label)
 
@@ -4408,7 +4335,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("YOLO CODE 模型训练平台 v1.8.0")
-        self.resize(1720, 1020)
+        self.resize(1800, 1060)
         self.setMinimumSize(1340, 820)
         self._init_ui()
 
