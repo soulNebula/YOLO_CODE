@@ -47,7 +47,7 @@ QMainWindow {
 QWidget {
     background-color: #fafafa;
     color: #333333;
-    font-size: 15px;
+    font-size: 16px;
     font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
 }
 QTabWidget::pane {
@@ -75,9 +75,9 @@ QGroupBox {
     border: 1px solid #e8e8e8;
     border-radius: 6px;
     margin-top: 10px;
-    padding: 14px 10px 10px 10px;
+    padding: 16px 14px 14px 14px;
     font-weight: normal;
-    font-size: 15px;
+    font-size: 16px;
     color: #555555;
     background-color: #ffffff;
 }
@@ -86,15 +86,15 @@ QGroupBox::title {
     left: 12px;
     padding: 0 6px;
     color: #ff6b00;
-    font-size: 14px;
+    font-size: 15px;
 }
 QPushButton {
     background-color: #ffffff;
     color: #ff6b00;
     border: 1px solid #e0e0e0;
     border-radius: 4px;
-    padding: 5px 14px;
-    font-size: 14px;
+    padding: 6px 16px;
+    font-size: 15px;
     font-weight: normal;
     min-width: 60px;
 }
@@ -115,7 +115,7 @@ QPushButton#btnTrain {
     background-color: #ff6b00;
     color: #ffffff;
     border: none;
-    font-size: 15px;
+    font-size: 16px;
     padding: 7px 22px;
 }
 QPushButton#btnTrain:hover {
@@ -134,7 +134,7 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     background-color: #ffffff;
     border: 1px solid #d0d0d0;
     border-radius: 3px;
-    padding: 5px 8px;
+    padding: 6px 10px;
     color: #333333;
 }
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
@@ -167,7 +167,7 @@ QTreeWidget::item:hover, QListWidget::item:hover {
 QHeaderView::section {
     background-color: #ff8c00;
     color: #ffffff;
-    padding: 5px;
+    padding: 6px 8px;
     border: 1px solid #e0e0e0;
     font-weight: bold;
 }
@@ -320,10 +320,10 @@ QLabel#titleLabel {
     font-size: 18px;
     font-weight: bold;
     color: #ff6b00;
-    padding: 5px;
+    padding: 6px 8px;
 }
 QLabel#subtitleLabel {
-    font-size: 14px;
+    font-size: 15px;
     color: #999999;
 }
 """
@@ -375,7 +375,7 @@ NavButton {
     border-radius: 0px;
     text-align: left;
     padding: 9px 18px;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: normal;
     min-width: 0px;
 }
@@ -394,29 +394,29 @@ NavButton:checked {
 
 DARK_STYLE = """
 QMainWindow { background-color: #1e1e1e; }
-QWidget { background-color: #1e1e1e; color: #d4d4d4; font-size: 15px; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
+QWidget { background-color: #1e1e1e; color: #d4d4d4; font-size: 16px; font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif; }
 QTabWidget::pane { border: 1px solid #3d3d3d; background-color: #2d2d2d; }
 QTabBar::tab { background-color: #2d2d2d; color: #999; padding: 12px 20px; margin-right: 1px; border: 1px solid #3d3d3d; font-weight: bold; }
 QTabBar::tab:selected { background-color: #1e1e1e; color: #ff8c00; border-bottom: 3px solid #ff8c00; }
 QTabBar::tab:hover:!selected { background-color: #3a3a3a; color: #ffa500; }
-QGroupBox { border: 1px solid #3d3d3d; border-radius: 6px; margin-top: 10px; padding: 14px 10px 10px 10px; font-size: 15px; color: #999; background-color: #2d2d2d; }
-QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #ff8c00; font-size: 14px; }
-QPushButton { background-color: #3d3d3d; color: #ff8c00; border: 1px solid #4d4d4d; border-radius: 4px; padding: 5px 14px; font-size: 14px; min-width: 60px; }
+QGroupBox { border: 1px solid #3d3d3d; border-radius: 6px; margin-top: 10px; padding: 16px 14px 14px 14px; font-size: 16px; color: #999; background-color: #2d2d2d; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 6px; color: #ff8c00; font-size: 15px; }
+QPushButton { background-color: #3d3d3d; color: #ff8c00; border: 1px solid #4d4d4d; border-radius: 4px; padding: 6px 16px; font-size: 15px; min-width: 60px; }
 QPushButton:hover { background-color: #4d4d4d; color: #ffa500; border-color: #ff8c00; }
 QPushButton:pressed { background-color: #5a5a5a; }
 QPushButton:disabled { background-color: #2d2d2d; color: #666; border-color: #3d3d3d; }
-QPushButton#btnTrain { background-color: #ff6b00; color: #fff; border: none; font-size: 15px; padding: 7px 22px; }
+QPushButton#btnTrain { background-color: #ff6b00; color: #fff; border: none; font-size: 16px; padding: 7px 22px; }
 QPushButton#btnTrain:hover { background-color: #e65c00; }
 QPushButton#btnStop { background-color: #666; color: #fff; border: none; }
 QPushButton#btnStop:hover { background-color: #555; }
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background-color: #3d3d3d; border: 1px solid #555; border-radius: 3px; padding: 5px 8px; color: #d4d4d4; }
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { background-color: #3d3d3d; border: 1px solid #555; border-radius: 3px; padding: 6px 10px; color: #d4d4d4; }
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus { border-color: #ff8c00; }
 QComboBox::drop-down { border: none; padding-right: 8px; }
 QComboBox QAbstractItemView { background-color: #3d3d3d; border: 1px solid #555; color: #d4d4d4; selection-background-color: #5a5a5a; }
 QTreeWidget, QListWidget, QTableWidget { background-color: #2d2d2d; border: 1px solid #3d3d3d; color: #d4d4d4; alternate-background-color: #333; }
 QTreeWidget::item:selected, QListWidget::item:selected, QTableWidget::item:selected { background-color: #5a5a5a; color: #ff8c00; }
 QTreeWidget::item:hover, QListWidget::item:hover { background-color: #3a3a3a; }
-QHeaderView::section { background-color: #e65c00; color: #fff; padding: 5px; border: 1px solid #4d4d4d; font-weight: bold; }
+QHeaderView::section { background-color: #e65c00; color: #fff; padding: 6px 8px; border: 1px solid #4d4d4d; font-weight: bold; }
 QScrollBar:vertical { background-color: #2d2d2d; width: 10px; border-radius: 5px; }
 QScrollBar::handle:vertical { background-color: #555; border-radius: 5px; min-height: 30px; }
 QScrollBar::handle:vertical:hover { background-color: #ff8c00; }
@@ -448,8 +448,8 @@ QRadioButton::indicator:checked { background-color: #ff6b00; border-color: #ff6b
 QSplitter::handle { background-color: #3d3d3d; width: 2px; height: 2px; }
 QSpinBox::up-button, QDoubleSpinBox::up-button { background-color: #3d3d3d; border-radius: 2px; }
 QSpinBox::down-button, QDoubleSpinBox::down-button { background-color: #3d3d3d; border-radius: 2px; }
-QLabel#titleLabel { font-size: 18px; font-weight: bold; color: #ff8c00; padding: 5px; }
-QLabel#subtitleLabel { font-size: 14px; color: #888; }
+QLabel#titleLabel { font-size: 18px; font-weight: bold; color: #ff8c00; padding: 6px 8px; }
+QLabel#subtitleLabel { font-size: 15px; color: #888; }
 """
 
 DARK_SIDEBAR_STYLE = """
@@ -461,7 +461,7 @@ QFrame#sidebarSep { color: #2a2a2a; background-color: #2a2a2a; max-height: 1px; 
 QFrame#sidebarBorder { color: #2a2a2a; background-color: #2a2a2a; max-width: 1px; }
 QWidget#contentStack { background-color: #1e1e1e; }
 QLabel#versionLabel { font-size: 12px; color: #888; background: transparent; padding: 4px; }
-NavButton { background-color: transparent; color: #888; border: none; border-radius: 0px; text-align: left; padding: 9px 18px; font-size: 14px; font-weight: normal; min-width: 0px; }
+NavButton { background-color: transparent; color: #888; border: none; border-radius: 0px; text-align: left; padding: 9px 18px; font-size: 15px; font-weight: normal; min-width: 0px; }
 NavButton:hover { background-color: #2a2a2a; color: #fff; }
 NavButton:checked { background-color: #ff6b00; color: #fff; font-weight: bold; }
 """
@@ -497,11 +497,11 @@ class AnnotationWidget(QWidget):
 
     def _init_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         # ── 左侧面板 ──
         left_panel = QWidget()
-        left_panel.setFixedWidth(280)
+        left_panel.setFixedWidth(340)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -651,7 +651,7 @@ class AnnotationWidget(QWidget):
 
         # ── 右侧面板 ──
         right_panel = QWidget()
-        right_panel.setFixedWidth(280)
+        right_panel.setFixedWidth(340)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -1235,7 +1235,7 @@ class TrainingWidget(QWidget):
 
     def _init_ui(self):
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(8)
 
         # ================= 顶部：环境配置区 =================
@@ -1314,7 +1314,7 @@ class TrainingWidget(QWidget):
         self.sub_tabs = QTabWidget()
         self.sub_tabs.setStyleSheet("""
             QTabWidget::pane { border: 1px solid #e0e0e0; background: #fafafa; }
-            QTabBar::tab { padding: 10px 20px; font-size: 15px; }
+            QTabBar::tab { padding: 10px 20px; font-size: 16px; }
             QTabBar::tab:selected { color: #ff6b00; border-bottom: 3px solid #ff6b00; font-weight: bold; }
         """)
 
@@ -1547,14 +1547,14 @@ class TrainingWidget(QWidget):
         # ---- Tab 1: 训练监控 ----
         monitor_tab = QWidget()
         monitor_layout = QVBoxLayout(monitor_tab)
-        monitor_layout.setContentsMargins(5, 5, 5, 5)
+        monitor_layout.setContentsMargins(10, 10, 10, 10)
 
         # 顶部：训练数据集 + 模型信息
         info_row = QHBoxLayout()
         self.monitor_ds_label = QLabel("数据集: ---")
-        self.monitor_ds_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #333;")
+        self.monitor_ds_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #333;")
         self.monitor_model_label = QLabel("模型: ---")
-        self.monitor_model_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #333;")
+        self.monitor_model_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #333;")
         info_row.addWidget(self.monitor_ds_label)
         info_row.addWidget(self.monitor_model_label)
         info_row.addStretch()
@@ -1590,7 +1590,7 @@ class TrainingWidget(QWidget):
 
         info_row = QHBoxLayout()
         self.metrics_epoch_label = QLabel("Epoch: ---")
-        self.metrics_epoch_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ff6b00;")
+        self.metrics_epoch_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #ff6b00;")
         info_row.addWidget(self.metrics_epoch_label)
         info_row.addStretch()
         table_layout.addLayout(info_row)
@@ -1655,7 +1655,7 @@ class TrainingWidget(QWidget):
                 background: #1e1e1e;
                 color: #d4d4d4;
                 font-family: 'Consolas', 'Courier New', 'Microsoft YaHei', monospace;
-                font-size: 15px;
+                font-size: 16px;
                 border: none;
                 padding: 8px 12px;
                 selection-background-color: #264f78;
@@ -1669,7 +1669,7 @@ class TrainingWidget(QWidget):
         toolbar_layout.setContentsMargins(12, 6, 12, 6)
 
         title = QLabel("📋 训练日志")
-        title.setStyleSheet("color: #ddd; font-size: 15px; font-weight: bold; border: none; background: transparent;")
+        title.setStyleSheet("color: #ddd; font-size: 16px; font-weight: bold; border: none; background: transparent;")
         toolbar_layout.addWidget(title)
         self.log_line_count = QLabel("0 行")
         self.log_line_count.setStyleSheet("color: #888; font-size: 13px; border: none; background: transparent;")
@@ -1729,7 +1729,7 @@ class TrainingWidget(QWidget):
         pytorch_err = info.get('pytorch_error', '')
         if pytorch_err:
             set_val('pytorch_error', pytorch_err)
-            self.env_labels['pytorch_error'].setStyleSheet("color: #e74c3c; font-size: 14px;")
+            self.env_labels['pytorch_error'].setStyleSheet("color: #e74c3c; font-size: 15px;")
         else:
             set_val('pytorch_error', '正常' if info.get('pytorch_installed') else '未安装')
 
@@ -2263,7 +2263,7 @@ class InferenceWidget(QWidget):
     """模型推理页面"""
     frame_signal = pyqtSignal(object, list)
     INFERENCE_STYLE = """
-        QGroupBox { font-size: 14px; margin-top: 8px; padding-top: 16px; }
+        QGroupBox { font-size: 15px; margin-top: 8px; padding-top: 16px; }
         QGroupBox::title { color: #ff6b00; }
     """
 
@@ -2277,7 +2277,7 @@ class InferenceWidget(QWidget):
 
     def _init_ui(self):
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setContentsMargins(16, 14, 16, 14)
         outer.setSpacing(8)
 
         # ========== 第一行：模型选择 ==========
@@ -2298,7 +2298,7 @@ class InferenceWidget(QWidget):
         m_load.clicked.connect(self._load_model)
         m_layout.addWidget(m_load)
         self.model_info_label = QLabel("未加载模型")
-        self.model_info_label.setStyleSheet("font-size: 14px; color: #999; padding: 0 5px;")
+        self.model_info_label.setStyleSheet("font-size: 15px; color: #999; padding: 0 5px;")
         m_layout.addWidget(self.model_info_label)
         row1.addWidget(model_grp, 3)
 
@@ -2542,7 +2542,7 @@ class InferenceWidget(QWidget):
         canvas_layout.setSpacing(4)
 
         self.result_canvas = QLabel()
-        self.result_canvas.setMinimumSize(400, 300)
+        self.result_canvas.setMinimumSize(500, 350)
         self.result_canvas.setAlignment(Qt.AlignCenter)
         self.result_canvas.setStyleSheet(
             "background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;")
@@ -2555,9 +2555,9 @@ class InferenceWidget(QWidget):
         stat_layout.setContentsMargins(10, 4, 10, 4)
 
         self.detect_count_label = QLabel("检测到 0 个目标")
-        self.detect_count_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #ff6b00; border: none;")
+        self.detect_count_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ff6b00; border: none;")
         self.inference_time_label = QLabel("")
-        self.inference_time_label.setStyleSheet("color: #999; font-size: 14px; border: none;")
+        self.inference_time_label.setStyleSheet("color: #999; font-size: 15px; border: none;")
 
         class_stats = QLabel("")
         class_stats.setStyleSheet("color: #666; font-size: 13px; border: none;")
@@ -2584,7 +2584,7 @@ class InferenceWidget(QWidget):
         rp_head_layout = QHBoxLayout(rp_head)
         rp_head_layout.setContentsMargins(0, 0, 0, 6)
         self.result_summary = QLabel("就绪，等待推理...")
-        self.result_summary.setStyleSheet("font-size: 14px; color: #666;")
+        self.result_summary.setStyleSheet("font-size: 15px; color: #666;")
         rp_head_layout.addWidget(self.result_summary)
         rp_head_layout.addStretch()
         self.export_csv_btn = QPushButton("导出 CSV")
@@ -2619,7 +2619,7 @@ class InferenceWidget(QWidget):
         self.detect_table.verticalHeader().setDefaultSectionSize(32)
         self.detect_table.setStyleSheet("""
             QTableWidget {
-                font-size: 15px;
+                font-size: 16px;
                 gridline-color: #e8e8e8;
             }
             QTableWidget::item {
@@ -2627,7 +2627,7 @@ class InferenceWidget(QWidget):
             }
             QHeaderView::section {
                 padding: 8px 6px;
-                font-size: 14px;
+                font-size: 15px;
                 font-weight: bold;
                 color: #222222;
                 background: #f5f5f5;
@@ -2679,7 +2679,7 @@ class InferenceWidget(QWidget):
         el = (time.time() - t0) * 1000
         if success:
             self.model_info_label.setText(f"✅ {Path(path).name} ({el:.0f}ms)")
-            self.model_info_label.setStyleSheet("font-size: 14px; color: #2ecc71; padding: 0 5px;")
+            self.model_info_label.setStyleSheet("font-size: 15px; color: #2ecc71; padding: 0 5px;")
             # 更新预处理尺寸为模型原生尺寸
             try:
                 sz = self.manager.model.model.args.get('imgsz', 640) if self.manager.model else 640
@@ -3177,11 +3177,11 @@ class EvaluationWidget(QWidget):
 
     def _init_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         # 左侧面板
         left_panel = QWidget()
-        left_panel.setFixedWidth(320)
+        left_panel.setFixedWidth(380)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -3583,7 +3583,7 @@ class DashboardWidget(QWidget):
         from utils.config import get_work_dir, auto_scan
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(15)
 
         # 欢迎标题
@@ -3592,7 +3592,7 @@ class DashboardWidget(QWidget):
         title = QLabel("YOLO CODE 模型训练平台")
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #333; padding: 5px 0;")
         subtitle = QLabel("一体化标注、训练、推理解决方案")
-        subtitle.setStyleSheet("font-size: 15px; color: #999; padding-bottom: 5px;")
+        subtitle.setStyleSheet("font-size: 16px; color: #999; padding-bottom: 5px;")
         title_col.addWidget(title)
         title_col.addWidget(subtitle)
         title_row.addLayout(title_col)
@@ -3637,7 +3637,7 @@ class DashboardWidget(QWidget):
         wd_path = get_work_dir()
         wd_name = os.path.basename(wd_path.rstrip('/\\')) or wd_path
         self.work_dir_label = QLabel(f"工作目录: <b>{wd_name}</b>")
-        self.work_dir_label.setStyleSheet("font-size: 15px; color: #1565c0; border: none; background: transparent;")
+        self.work_dir_label.setStyleSheet("font-size: 16px; color: #1565c0; border: none; background: transparent;")
         self.work_dir_label.setToolTip(wd_path)
         wd_bar_layout.addWidget(self.work_dir_label)
 
@@ -3647,7 +3647,7 @@ class DashboardWidget(QWidget):
         scan = auto_scan(wd_path)
         info_text = f"📊 {len(scan['datasets'])} 数据集  |  🖼 {scan['total_images']} 图片  |  🤖 {len(scan['models'])} 模型"
         info_label = QLabel(info_text)
-        info_label.setStyleSheet("font-size: 14px; color: #1976d2; border: none; background: transparent;")
+        info_label.setStyleSheet("font-size: 15px; color: #1976d2; border: none; background: transparent;")
         wd_bar_layout.addWidget(info_label)
 
         layout.addWidget(wd_bar)
@@ -3702,7 +3702,7 @@ class DashboardWidget(QWidget):
             btn.setMaximumWidth(180)
             btn.setStyleSheet("""
                 QPushButton { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
-                              font-size: 14px; color: #555; text-align: center; padding: 10px; }
+                              font-size: 15px; color: #555; text-align: center; padding: 10px; }
                 QPushButton:hover { background: #fff3e6; border-color: #ff6b00; color: #ff6b00; }
             """)
             btn.setToolTip(desc)
@@ -3885,7 +3885,7 @@ class DatasetWidget(QWidget):
 
         # 左侧：数据集操作
         left = QWidget()
-        left.setFixedWidth(320)
+        left.setFixedWidth(380)
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(12)
@@ -3910,7 +3910,7 @@ class DatasetWidget(QWidget):
         create_layout.addLayout(btn_row)
 
         self.ds_status = QLabel("尚未创建数据集")
-        self.ds_status.setStyleSheet("color: #999; font-size: 14px;")
+        self.ds_status.setStyleSheet("color: #999; font-size: 15px;")
         create_layout.addWidget(self.ds_status)
         left_layout.addWidget(create_group)
 
@@ -4081,7 +4081,7 @@ class ExportWidget(QWidget):
         model_layout.addLayout(m_row)
 
         self.export_model_info = QLabel("未选择模型")
-        self.export_model_info.setStyleSheet("color: #999; font-size: 14px;")
+        self.export_model_info.setStyleSheet("color: #999; font-size: 15px;")
         model_layout.addWidget(self.export_model_info)
         left_layout.addWidget(model_group)
 
@@ -4193,7 +4193,7 @@ class TerminalWidget(QWidget):
             background: #000000;
             color: #ffffff;
             font-family: 'Consolas', 'Courier New', 'Microsoft YaHei', monospace;
-            font-size: 14px;
+            font-size: 15px;
             border: none;
             padding: 8px 10px;
             selection-background-color: #ffffff;
@@ -4225,7 +4225,7 @@ class TerminalWidget(QWidget):
         input_layout.setSpacing(6)
 
         prompt = QLabel("$")
-        prompt.setStyleSheet("color: #00ff00; font-family: Consolas; font-size: 14px; font-weight: bold; "
+        prompt.setStyleSheet("color: #00ff00; font-family: Consolas; font-size: 15px; font-weight: bold; "
                             "background: transparent; border: none;")
         input_layout.addWidget(prompt)
 
@@ -4234,7 +4234,7 @@ class TerminalWidget(QWidget):
         self.cmd_input.setStyleSheet("""
             QLineEdit { background: transparent; color: #ffffff;
                         font-family: 'Consolas', 'Courier New', 'Microsoft YaHei', monospace;
-                        font-size: 14px; border: none; padding: 4px 0; }
+                        font-size: 15px; border: none; padding: 4px 0; }
         """)
         self.cmd_input.returnPressed.connect(self._run)
         input_layout.addWidget(self.cmd_input, 1)
@@ -4246,7 +4246,7 @@ class TerminalWidget(QWidget):
         w = f"{30 * '─'}"
         lines = [
             f"┌{w}┐",
-            f"│  YOLO CODE Terminal v1.2{' ' * (30 - 26)}│",
+            f"│  YOLO CODE Terminal v1.8{' ' * (30 - 26)}│",
             f"│  Python {sys.version.split()[0]:<25}│",
             f"│  {platform.platform()[:28]:<28}│",
             f"└{w}┘",
@@ -4357,7 +4357,7 @@ class AboutWidget(QWidget):
 
         version_label = QLabel("版本 1.2.0")
         version_label.setAlignment(Qt.AlignCenter)
-        version_label.setStyleSheet("font-size: 14px; color: #999999;")
+        version_label.setStyleSheet("font-size: 15px; color: #999999;")
         layout.addWidget(version_label)
 
         layout.addSpacing(30)
@@ -4372,21 +4372,21 @@ class AboutWidget(QWidget):
             "技术栈: PyQt5 + Ultralytics YOLO + OpenCV"
         )
         desc.setAlignment(Qt.AlignCenter)
-        desc.setStyleSheet("font-size: 14px; color: #555555; line-height: 1.8;")
+        desc.setStyleSheet("font-size: 15px; color: #555555; line-height: 1.8;")
         layout.addWidget(desc)
 
         layout.addSpacing(30)
 
         copyright_label = QLabel("© 2025 YOLO CODE. All rights reserved.")
         copyright_label.setAlignment(Qt.AlignCenter)
-        copyright_label.setStyleSheet("font-size: 14px; color: #aaaaaa;")
+        copyright_label.setStyleSheet("font-size: 15px; color: #aaaaaa;")
         layout.addWidget(copyright_label)
 
         layout.addSpacing(10)
 
         contact_label = QLabel("📧 欢迎联系我们: 2807087688@qq.com")
         contact_label.setAlignment(Qt.AlignCenter)
-        contact_label.setStyleSheet("font-size: 14px; color: #ff6b00;")
+        contact_label.setStyleSheet("font-size: 15px; color: #ff6b00;")
         layout.addWidget(contact_label)
 
 
@@ -4407,9 +4407,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("YOLO CODE 模型训练平台 v1.2.0")
-        self.resize(1600, 950)
-        self.setMinimumSize(1200, 700)
+        self.setWindowTitle("YOLO CODE 模型训练平台 v1.8.0")
+        self.resize(1720, 1020)
+        self.setMinimumSize(1340, 820)
         self._init_ui()
 
     def _init_ui(self):
@@ -4454,7 +4454,7 @@ class MainWindow(QMainWindow):
         # ---- 左侧导航栏 ----
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(240)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(0)
@@ -4506,7 +4506,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addStretch()
 
         # 底部版本信息
-        ver_label = QLabel("v1.2.0")
+        ver_label = QLabel("v1.8.0")
         ver_label.setObjectName("versionLabel")
         ver_label.setAlignment(Qt.AlignCenter)
         sidebar_layout.addWidget(ver_label)
@@ -4573,7 +4573,7 @@ class MainWindow(QMainWindow):
 
         # 状态文本
         self.status_label = QLabel("就绪")
-        self.status_label.setStyleSheet("font-size: 14px; color: #666;")
+        self.status_label.setStyleSheet("font-size: 15px; color: #666;")
         status_layout.addWidget(self.status_label)
 
         # 分隔
@@ -4584,7 +4584,7 @@ class MainWindow(QMainWindow):
 
         # GPU 信息
         self.gpu_label = QLabel("GPU: 检测中...")
-        self.gpu_label.setStyleSheet("font-size: 14px; color: #888;")
+        self.gpu_label.setStyleSheet("font-size: 15px; color: #888;")
         status_layout.addWidget(self.gpu_label)
 
         # 版本信息
@@ -4670,7 +4670,7 @@ class MainWindow(QMainWindow):
             pt_err = info.get('pytorch_error', '')
             if pt_err:
                 _set('pytorch_error', pt_err)
-                tw.env_labels.get('pytorch_error', QLabel()).setStyleSheet("color: #e74c3c; font-size: 14px;")
+                tw.env_labels.get('pytorch_error', QLabel()).setStyleSheet("color: #e74c3c; font-size: 15px;")
             else:
                 _set('pytorch_error', '正常' if info.get('pytorch_installed') else '未安装')
             _set('cuda_version', info.get('cuda_version', '---'))
