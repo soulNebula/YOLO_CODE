@@ -29,20 +29,37 @@ class AnnotationManager:
     # ── 目录加载 ─────────────────────────────────────────────
 
     def load_image_dir(self, dir_path):
-        """加载目录中的所有图片"""
-        self.dataset_dir = dir_path
-        self.image_list = []
+        """加载目录中的所有图片，自动检测数据集根目录"""
         ext_set = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'}
-        for f in sorted(os.listdir(dir_path)):
+        self.image_list = []
+
+        # 智能检测数据集根目录
+        # 如果打开的是 images/ 子目录且上级有 classes.txt 或 labels/，则以上级为 dataset_dir
+        parent = os.path.dirname(os.path.abspath(dir_path))
+        is_images_subdir = os.path.basename(os.path.abspath(dir_path)) == 'images'
+        has_parent_markers = (
+            os.path.isfile(os.path.join(parent, 'classes.txt')) or
+            os.path.isdir(os.path.join(parent, 'labels'))
+        )
+        if is_images_subdir and has_parent_markers:
+            self.dataset_dir = parent
+            images_dir = dir_path
+        else:
+            self.dataset_dir = dir_path
+            images_dir = dir_path
+
+        # 收集图片
+        for f in sorted(os.listdir(images_dir)):
             if Path(f).suffix.lower() in ext_set:
-                self.image_list.append(os.path.join(dir_path, f))
+                self.image_list.append(os.path.join(images_dir, f))
 
         if not self.image_list:
-            images_dir = os.path.join(dir_path, 'images')
-            if os.path.isdir(images_dir):
-                for f in sorted(os.listdir(images_dir)):
+            alt = os.path.join(dir_path, 'images')
+            if os.path.isdir(alt):
+                self.dataset_dir = dir_path
+                for f in sorted(os.listdir(alt)):
                     if Path(f).suffix.lower() in ext_set:
-                        self.image_list.append(os.path.join(images_dir, f))
+                        self.image_list.append(os.path.join(alt, f))
 
         self.annotations = {}
         self.dirty_images = set()
@@ -304,19 +321,34 @@ class AnnotationManager:
     def discard_current_image(self):
         """标记当前图片为废弃（写入 discarded.txt）"""
         if not self.dataset_dir or not self.current_image_path:
-            return
+            return False
         discard_file = os.path.join(self.dataset_dir, 'discarded.txt')
         img_name = os.path.basename(self.current_image_path)
-        # 检查是否已在列表中
         if os.path.isfile(discard_file):
             with open(discard_file, 'r', encoding='utf-8') as f:
                 existing = {line.strip() for line in f}
         else:
             existing = set()
         if img_name in existing:
-            return  # 已在废弃列表
+            return False  # 已在废弃列表
         with open(discard_file, 'a', encoding='utf-8') as f:
             f.write(img_name + '\n')
+        return True
+
+    def undiscard_current_image(self):
+        """取消当前图片的废弃标记（从 discarded.txt 删除）"""
+        if not self.dataset_dir or not self.current_image_path:
+            return False
+        discard_file = os.path.join(self.dataset_dir, 'discarded.txt')
+        if not os.path.isfile(discard_file):
+            return False
+        img_name = os.path.basename(self.current_image_path)
+        with open(discard_file, 'r', encoding='utf-8') as f:
+            lines = [l.strip() for l in f if l.strip() != img_name]
+        if len(lines) == len([l for l in open(discard_file).read().strip().split('\n') if l]):
+            return False  # 不在列表中
+        with open(discard_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines) + ('\n' if lines else ''))
         return True
 
     # ── 类别管理 ─────────────────────────────────────────────

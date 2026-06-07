@@ -272,7 +272,7 @@ def validate_yaml_consistency(data_yaml_path):
 
     # 2. nc 必须与 len(names) 一致
     if nc != len(names):
-        result.add_error(f"nc={nc} 但 names 有 {len(names)} 个条目（应一致）")
+        result.add_error(f"类别数量不匹配：配置文件声明了 {nc} 个类别，但只列出了 {len(names)} 个类别名（'{nc}' 和 names 数量应该相等）")
 
     # 3. 解析路径
     base = cfg.get('path', os.path.dirname(data_yaml_path)) if cfg else ''
@@ -313,15 +313,16 @@ def validate_yaml_consistency(data_yaml_path):
     result.found_class_ids = found_ids
 
     if not found_ids and os.path.isdir(labels_dir):
-        result.add_warning("标注文件存在但未找到有效的 class_id")
+        result.add_warning("labels/ 目录下有标注文件，但内容为空或不合法，请检查标注文件")
 
     # 5. 标注中出现的 class_id 超出 names 范围
     if names and found_ids:
         oob_ids = found_ids - set(range(len(names)))
         if oob_ids:
+            oob_names = [f"编号{i}" for i in sorted(oob_ids)]
             result.add_error(
-                f"标注中出现超出范围的 class_id: {sorted(oob_ids)} "
-                f"(names 只有 {len(names)} 个类别)"
+                f"标注中用到了不存在的类别（编号 {', '.join(oob_names)}），"
+                f"但配置文件中只定义了 {len(names)} 个类别: {', '.join(names[:5])}"
             )
 
     # 6. names 中有未在标注中出现的类别
@@ -330,13 +331,13 @@ def validate_yaml_consistency(data_yaml_path):
         if result.missing_classes:
             missing_names = [names[i] for i in result.missing_classes]
             result.add_warning(
-                f"以下类别在标注中从未出现: {missing_names}"
+                f"类别 '{', '.join(missing_names)}' 在标注中从未使用过，训练时可能没有效果"
             )
 
     # 7. 无 names 但有标注
     if not names and found_ids:
         result.add_error(
-            f"data.yaml 中未定义 names，但标注中出现了这些 class_id: {sorted(found_ids)}"
+            f"配置文件中没有定义类别名（names 为空），但标注中存在 {len(found_ids)} 个不同的类别编号"
         )
 
     return result

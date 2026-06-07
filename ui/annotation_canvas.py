@@ -23,7 +23,6 @@ class ImageCanvas(QLabel):
     mouseMoved = pyqtSignal(int, int)
     panModeChanged = pyqtSignal(bool)
     copyPrevRequested = pyqtSignal()
-    discardRequested = pyqtSignal()
 
     CORNER_RADIUS = 10
     CORNER_ANCHORS = {
@@ -681,9 +680,6 @@ class ImageCanvas(QLabel):
             self.pasteRequested.emit()
         elif key == Qt.Key_D and mods == Qt.ControlModifier:
             self.duplicateRequested.emit()
-
-        elif key == Qt.Key_X and not mods:
-            self.discardRequested.emit()
 
         elif key == Qt.Key_F and mods == Qt.ControlModifier:
             if mods & Qt.ShiftModifier:

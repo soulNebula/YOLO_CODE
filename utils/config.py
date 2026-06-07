@@ -62,48 +62,77 @@ def auto_scan(work_dir=None):
     if not os.path.isdir(work_dir):
         return result
 
-    for entry in os.listdir(work_dir):
-        full = os.path.join(work_dir, entry)
-        if not os.path.isdir(full):
-            # .pt 模型文件
-            if entry.endswith('.pt'):
-                size_mb = os.path.getsize(full) / (1024 * 1024)
-                result['models'].append({'name': entry, 'size': f'{size_mb:.1f} MB', 'path': full})
-            continue
+    ext_set = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'}
 
-        # 检测数据集目录
-        has_images = os.path.isdir(os.path.join(full, 'images'))
-        has_labels = os.path.isdir(os.path.join(full, 'labels'))
-        has_yaml = os.path.exists(os.path.join(full, 'data.yaml'))
+    # 辅助函数：统计目录中图片/标签
+    def _count_media(directory):
+        imgs, lbls = 0, 0
+        if not os.path.isdir(directory):
+            return 0, 0
+        for root, _, files in os.walk(directory):
+            for f in files:
+                if f.lower().endswith(tuple(ext_set)):
+                    imgs += 1
+                elif f.endswith('.txt') and 'labels' in root.replace('\\', '/'):
+                    lbls += 1
+        return imgs, lbls
 
-        img_count = 0
-        lbl_count = 0
+    def _scan_dir(search_dir):
+        """扫描一个目录里的数据集和模型"""
+        if not os.path.isdir(search_dir):
+            return
+        for entry in sorted(os.listdir(search_dir)):
+            full = os.path.join(search_dir, entry)
+            if not os.path.isdir(full):
+                if entry.endswith('.pt'):
+                    try:
+                        size_mb = os.path.getsize(full) / (1024 * 1024)
+                    except Exception:
+                        size_mb = 0
+                    result['models'].append({'name': entry, 'size': f'{size_mb:.1f} MB', 'path': full})
+                continue
 
-        if has_images:
-            img_dir = os.path.join(full, 'images')
-            # 递归统计图片
-            for root, _, files in os.walk(img_dir):
-                for f in files:
-                    if f.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
-                        img_count += 1
-                        result['total_images'] += 1
+            has_images = os.path.isdir(os.path.join(full, 'images'))
+            has_labels = os.path.isdir(os.path.join(full, 'labels'))
+            has_yaml = os.path.exists(os.path.join(full, 'data.yaml'))
 
-        if has_labels:
-            lbl_dir = os.path.join(full, 'labels')
-            for root, _, files in os.walk(lbl_dir):
-                for f in files:
-                    if f.endswith('.txt'):
-                        lbl_count += 1
-                        result['total_labels'] += 1
+            img_count, lbl_count = 0, 0
+            if has_images:
+                img_count, _ = _count_media(os.path.join(full, 'images'))
+                result['total_images'] += img_count
+            if has_labels:
+                _, lbl_count = _count_media(os.path.join(full, 'labels'))
+                result['total_labels'] += lbl_count
 
-        if has_images or has_labels or has_yaml:
-            result['datasets'].append({
-                'name': entry,
-                'path': full,
-                'images': img_count,
-                'labels': lbl_count,
-                'has_yaml': has_yaml,
-            })
+            if has_images or has_labels or has_yaml:
+                result['datasets'].append({
+                    'name': entry,
+                    'path': full,
+                    'images': img_count,
+                    'labels': lbl_count,
+                    'has_yaml': has_yaml,
+                })
+
+    # 1. 扫描工作目录根级别（用户直接放图或 datasets/ 在根下）
+    _scan_dir(work_dir)
+
+    # 2. 扫描 datasets/ 子目录（用户在数据集页创建的都在这里）
+    datasets_root = os.path.join(work_dir, 'datasets')
+    if os.path.isdir(datasets_root):
+        _scan_dir(datasets_root)
+
+    # 3. 扫描 models/ 子目录
+    models_root = os.path.join(work_dir, 'models')
+    if os.path.isdir(models_root):
+        for f in sorted(os.listdir(models_root)):
+            if f.endswith('.pt'):
+                full = os.path.join(models_root, f)
+                if os.path.isfile(full):
+                    try:
+                        size_mb = os.path.getsize(full) / (1024 * 1024)
+                    except Exception:
+                        size_mb = 0
+                    result['models'].append({'name': f, 'size': f'{size_mb:.1f} MB', 'path': full})
 
     return result
 
