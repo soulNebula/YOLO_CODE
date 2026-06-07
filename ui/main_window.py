@@ -2048,6 +2048,9 @@ class TrainingWidget(QWidget):
 
     def _on_log(self, message):
         self.log_text.append(message)
+        if self.log_text.document().blockCount() > 1100:
+            c = self.log_text.textCursor(); c.movePosition(c.Start)
+            c.movePosition(c.Down, c.KeepAnchor, 100); c.removeSelectedText()
 
     def _scroll_log_if_needed(self):
         """自动滚动到日志底部"""
@@ -3031,7 +3034,6 @@ class InferenceWidget(QWidget):
         """刷新摄像头列表（打开设备检测可用性）"""
         self.camera_combo.clear()
         self.camera_combo.addItem("检测中...", -1)
-        QApplication.processEvents()
 
         names = self._get_friendly_camera_names()
         if not names:
@@ -3480,6 +3482,9 @@ class EvaluationWidget(QWidget):
 
     def _on_log(self, message):
         self.log_text.append(message)
+        if self.log_text.document().blockCount() > 1100:
+            c = self.log_text.textCursor(); c.movePosition(c.Start)
+            c.movePosition(c.Down, c.KeepAnchor, 100); c.removeSelectedText()
 
     def _on_progress(self, value):
         self.progress_bar.setValue(value)
@@ -3496,6 +3501,220 @@ class EvaluationWidget(QWidget):
 
             self.eval_btn.setEnabled(True)
             self.compare_btn.setEnabled(True)
+
+
+# ── 引导式模式 ──────────────────────────────────────────────
+
+STEPS = [
+    ("📁", "准备数据", "创建数据集，导入图片，生成 data.yaml"),
+    ("📝", "标注数据", "绘制 YOLO 标注框，保存标注"),
+    ("🚀", "训练模型", "选择模型和参数，开始训练"),
+    ("🔍", "推理测试", "加载模型，测试检测效果"),
+    ("📈", "评估模型", "查看 mAP、混淆矩阵、误检分析"),
+    ("📤", "导出部署", "导出 ONNX/TensorRT 等格式"),
+]
+
+class GuideWidget(QWidget):
+    """引导式全流程页面"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._current_step = 0
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(24)
+
+        # 标题
+        title = QLabel("YOLO CODE 引导式流程")
+        title.setStyleSheet("font-size: 28px; font-weight: bold; color: #333;")
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        subtitle = QLabel("按步骤完成目标检测项目，从数据准备到模型部署")
+        subtitle.setStyleSheet("font-size: 17px; color: #999;")
+        subtitle.setAlignment(Qt.AlignCenter)
+        layout.addWidget(subtitle)
+
+        layout.addSpacing(10)
+
+        # 步骤指示器
+        steps_widget = QWidget()
+        steps_layout = QHBoxLayout(steps_widget)
+        steps_layout.setSpacing(8)
+        self.step_indicators = []
+        for i, (icon, name, _) in enumerate(STEPS):
+            card = QFrame()
+            card.setStyleSheet("QFrame { background: #f5f5f5; border-radius: 8px; padding: 12px; }")
+            inner = QVBoxLayout(card)
+            inner.setSpacing(4)
+            il = QLabel(f"{icon} {name}")
+            il.setStyleSheet("font-size: 15px; font-weight: bold; color: #999; border: none;")
+            il.setAlignment(Qt.AlignCenter)
+            inner.addWidget(il)
+            steps_layout.addWidget(card)
+            self.step_indicators.append((card, il))
+        layout.addWidget(steps_widget)
+
+        # 分隔线
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("color: #e0e0e0;")
+        layout.addWidget(sep)
+
+        # 内容区
+        self.content_stack = QStackedWidget()
+        for i in range(len(STEPS)):
+            self.content_stack.addWidget(self._make_step_page(i))
+        layout.addWidget(self.content_stack, 1)
+
+        # 底部导航
+        nav_row = QHBoxLayout()
+        self.back_btn = QPushButton("← 上一步")
+        self.back_btn.clicked.connect(self._prev_step)
+        self.back_btn.setVisible(False)
+        self.next_btn = QPushButton("下一步 →")
+        self.next_btn.setObjectName("btnTrain")
+        self.next_btn.clicked.connect(self._next_step)
+        self.exit_btn = QPushButton("退出引导模式")
+        self.exit_btn.setStyleSheet("color: #999;")
+        self.exit_btn.clicked.connect(self._exit_guide)
+
+        nav_row.addWidget(self.exit_btn)
+        nav_row.addStretch()
+        nav_row.addWidget(self.back_btn)
+        nav_row.addWidget(self.next_btn)
+        layout.addLayout(nav_row)
+
+        self._update_step_ui()
+
+    def _make_step_page(self, i):
+        page = QWidget()
+        pl = QVBoxLayout(page)
+        pl.setSpacing(16)
+        icon, name, desc = STEPS[i]
+
+        header = QLabel(f"{icon} 第 {i+1} 步：{name}")
+        header.setStyleSheet("font-size: 22px; font-weight: bold; color: #ff6b00;")
+        pl.addWidget(header)
+
+        info = QLabel(desc)
+        info.setStyleSheet("font-size: 17px; color: #666;")
+        pl.addWidget(info)
+
+        if i == 0:  # 准备数据
+            btn1 = QPushButton("📁 创建新数据集")
+            btn1.setMinimumHeight(50)
+            btn1.setStyleSheet("font-size: 17px;")
+            btn1.clicked.connect(lambda: self._nav_to_tab(2))  # 数据集页
+            pl.addWidget(btn1)
+
+            btn2 = QPushButton("📂 选择已有数据集目录")
+            btn2.setMinimumHeight(50)
+            btn2.setStyleSheet("font-size: 17px;")
+            btn2.clicked.connect(lambda: self._nav_to_tab(1))  # 标注页
+            pl.addWidget(btn2)
+
+            btn3 = QPushButton("📄 手动选择 data.yaml")
+            btn3.setMinimumHeight(50)
+            btn3.setStyleSheet("font-size: 17px;")
+            btn3.clicked.connect(lambda: self._nav_to_tab(3))  # 训练页
+            pl.addWidget(btn3)
+
+            tip = QLabel("💡 提示：数据集创建后会自动生成 data.yaml；也可直接用标注工具打开图片目录开始标注。")
+            tip.setWordWrap(True)
+            tip.setStyleSheet("color: #999; font-size: 15px;")
+            pl.addWidget(tip)
+
+        elif i == 1:  # 标注
+            btn = QPushButton("🖊 打开标注工具")
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 17px;")
+            btn.clicked.connect(lambda: self._nav_to_tab(1))
+            pl.addWidget(btn)
+            tip = QLabel("快捷键：A/D 切图 | Delete 删框 | M 拖拽模式 | Ctrl+S 保存 | X 废弃标记")
+            tip.setWordWrap(True); tip.setStyleSheet("color: #999; font-size: 15px;")
+            pl.addWidget(tip)
+
+        elif i == 2:  # 训练
+            btn = QPushButton("🚀 打开训练配置")
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 17px;")
+            btn.clicked.connect(lambda: self._nav_to_tab(3))
+            pl.addWidget(btn)
+            tip = QLabel("💡 推荐：yolov8n 入门 | epochs=100 | batch=16 | imgsz=640")
+            tip.setWordWrap(True); tip.setStyleSheet("color: #999; font-size: 15px;")
+            pl.addWidget(tip)
+
+        elif i == 3:  # 推理
+            btn = QPushButton("🔍 打开推理工具")
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 17px;")
+            btn.clicked.connect(lambda: self._nav_to_tab(4))
+            pl.addWidget(btn)
+
+        elif i == 4:  # 评估
+            btn = QPushButton("📈 打开评估工具")
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 17px;")
+            btn.clicked.connect(lambda: self._nav_to_tab(5))
+            pl.addWidget(btn)
+
+        elif i == 5:  # 导出
+            btn = QPushButton("📤 打开导出工具")
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("font-size: 17px;")
+            btn.clicked.connect(lambda: self._nav_to_tab(6))
+            pl.addWidget(btn)
+            tip = QLabel("💡 推荐 ONNX 格式用于跨平台部署")
+            tip.setWordWrap(True); tip.setStyleSheet("color: #999; font-size: 15px;")
+            pl.addWidget(tip)
+
+        pl.addStretch()
+        return page
+
+    def _nav_to_tab(self, index):
+        mw = self.window()
+        if mw and hasattr(mw, '_switch_page'):
+            mw._switch_page(index)
+
+    def _update_step_ui(self):
+        s = self._current_step
+        self.content_stack.setCurrentIndex(s)
+        for i, (card, il) in enumerate(self.step_indicators):
+            if i < s:
+                card.setStyleSheet("QFrame { background: #e8f5e9; border-radius: 8px; padding: 12px; border: 2px solid #4caf50; }")
+                il.setStyleSheet("font-size: 15px; font-weight: bold; color: #4caf50; border: none;")
+                il.setText(f"✅ {STEPS[i][1]}")
+            elif i == s:
+                card.setStyleSheet("QFrame { background: #fff3e0; border-radius: 8px; padding: 12px; border: 2px solid #ff6b00; }")
+                il.setStyleSheet("font-size: 15px; font-weight: bold; color: #ff6b00; border: none;")
+            else:
+                card.setStyleSheet("QFrame { background: #f5f5f5; border-radius: 8px; padding: 12px; }")
+                il.setStyleSheet("font-size: 15px; font-weight: bold; color: #ccc; border: none;")
+                il.setText(f"{STEPS[i][0]} {STEPS[i][1]}")
+        self.back_btn.setVisible(s > 0)
+        self.next_btn.setText("完成 🎉" if s >= len(STEPS) - 1 else "下一步 →")
+        self.next_btn.setStyleSheet("background: #4caf50; color: #fff; font-size: 17px;" if s >= len(STEPS) - 1 else "")
+
+    def _prev_step(self):
+        if self._current_step > 0:
+            self._current_step -= 1
+            self._update_step_ui()
+
+    def _next_step(self):
+        if self._current_step >= len(STEPS) - 1:
+            self._exit_guide()
+        else:
+            self._current_step += 1
+            self._update_step_ui()
+
+    def _exit_guide(self):
+        mw = self.window()
+        if mw and hasattr(mw, '_switch_page'):
+            mw._switch_page(0)
 
 
 class DashboardWidget(QWidget):
@@ -3572,10 +3791,10 @@ class DashboardWidget(QWidget):
 
         # 子目录快捷信息
         scan = auto_scan(wd_path)
-        info_text = f"📊 {len(scan['datasets'])} 数据集  |  🖼 {scan['total_images']} 图片  |  🤖 {len(scan['models'])} 模型"
-        info_label = QLabel(info_text)
-        info_label.setStyleSheet("font-size: 15px; color: #1976d2; border: none; background: transparent;")
-        wd_bar_layout.addWidget(info_label)
+        self.info_label = QLabel()
+        self.info_label.setStyleSheet("font-size: 15px; color: #1976d2; border: none; background: transparent;")
+        self._update_info_label(scan)
+        wd_bar_layout.addWidget(self.info_label)
 
         layout.addWidget(wd_bar)
 
@@ -3621,6 +3840,7 @@ class DashboardWidget(QWidget):
             ("🖊", "开始标注", "打开标注工具", 1),
             ("🚀", "快速训练", "使用默认配置训练", 3),
             ("🔍", "模型推理", "对图片进行检测", 4),
+            ("🧹", "内存清理", "清理缓存释放内存", -1),
         ]
         self.nav_callback = None  # 由MainWindow设置
         for icon, title_text, desc, target_index in quick_actions:
@@ -3708,7 +3928,9 @@ class DashboardWidget(QWidget):
 
     def _on_quick_action(self, index):
         """处理快捷操作点击"""
-        if self.nav_callback:
+        if index < 0:
+            self._clear_memory()
+        elif self.nav_callback:
             self.nav_callback(index)
 
     def _set_work_dir(self):
@@ -3721,20 +3943,42 @@ class DashboardWidget(QWidget):
         wd_name = os.path.basename(path.rstrip('/\\')) or path
         self.work_dir_label.setText(f"工作目录: <b>{wd_name}</b>")
         self.work_dir_label.setToolTip(path)
+        scan = auto_scan(path)
+        self._update_info_label(scan)
         self.refresh_stats()
         self.add_activity(f"切换工作目录: {wd_name}")
 
+    def _update_info_label(self, scan):
+        self.info_label.setText(
+            f"📊 {len(scan['datasets'])} 数据集  |  🖼 {scan['total_images']} 图片  |  🤖 {len(scan['models'])} 模型"
+        )
+
     def refresh_stats(self):
-        """刷新统计数据"""
+        """刷新统计数据（后台线程避免卡顿）"""
         from utils.config import get_work_dir, auto_scan
-        scan = auto_scan(get_work_dir())
-        self.card_labels.get('数据集', QLabel()).setText(str(len(scan['datasets'])))
-        self.card_labels.get('图片数量', QLabel()).setText(str(scan['total_images']))
-        self.card_labels.get('标注数量', QLabel()).setText(str(scan['total_labels']))
-        self.card_labels.get('模型文件', QLabel()).setText(str(len(scan['models'])))
+        wd = get_work_dir()
+        def _scan():
+            scan = auto_scan(wd)
+            self.card_labels.get('数据集', QLabel()).setText(str(len(scan['datasets'])))
+            self.card_labels.get('图片数量', QLabel()).setText(str(scan['total_images']))
+            self.card_labels.get('标注数量', QLabel()).setText(str(scan['total_labels']))
+            self.card_labels.get('模型文件', QLabel()).setText(str(len(scan['models'])))
+        import threading
+        threading.Thread(target=_scan, daemon=True).start()
 
     def update_stats(self, stats_dict):
         self.refresh_stats()
+
+    def _clear_memory(self):
+        """内存清理：清除图片缓存 + 强制 GC"""
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, 'annotation_widget'):
+                mw.annotation_widget.manager.clear_image_cache()
+            import gc; gc.collect()
+            self.add_activity("内存已清理")
+        except Exception:
+            pass
 
     def update_sys_status(self, info):
         """更新系统状态"""
@@ -3934,18 +4178,49 @@ class DatasetWidget(QWidget):
         if not name:
             QMessageBox.warning(self, "提示", "请输入数据集名称")
             return
-        import os
-        ds_path = os.path.join(os.getcwd(), 'datasets', name)
+        from utils.config import get_work_dir
+        ds_path = os.path.join(get_work_dir(), 'datasets', name)
         os.makedirs(os.path.join(ds_path, 'images'), exist_ok=True)
         os.makedirs(os.path.join(ds_path, 'labels'), exist_ok=True)
         self.ds_status.setText(f"数据集已创建: {ds_path}")
         self._refresh_dataset_list()
 
     def _import_data(self):
+        """导入图片到数据集目录"""
+        from utils.config import get_work_dir
+        import shutil
+        # 确定目标数据集：优先用表格选中行，否则用输入框名称
+        row = self.ds_table.currentRow()
+        if row >= 0 and self.ds_table.item(row, 0):
+            ds_name = self.ds_table.item(row, 0).text()
+        else:
+            ds_name = self.ds_name_edit.text().strip()
+        if not ds_name:
+            QMessageBox.warning(self, "提示", "请先选择或输入数据集名称")
+            return
+
+        ds_path = os.path.join(get_work_dir(), 'datasets', ds_name)
+        if not os.path.isdir(ds_path):
+            QMessageBox.warning(self, "提示", f"数据集 '{ds_name}' 不存在，请先创建")
+            return
+
         dir_path = QFileDialog.getExistingDirectory(self, "选择图片目录")
-        if dir_path:
-            self.ds_status.setText(f"已导入: {dir_path}")
-            self._refresh_dataset_list()
+        if not dir_path:
+            return
+
+        ext_set = {'.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff'}
+        images_dir = os.path.join(ds_path, 'images')
+        os.makedirs(images_dir, exist_ok=True)
+        count = 0
+        for f in sorted(os.listdir(dir_path)):
+            if Path(f).suffix.lower() in ext_set:
+                src = os.path.join(dir_path, f)
+                dst = os.path.join(images_dir, f)
+                if not os.path.exists(dst):
+                    shutil.copy2(src, dst)
+                    count += 1
+        self.ds_status.setText(f"已导入 {count} 张图片 → {ds_name}")
+        self._refresh_dataset_list()
 
     def _split_dataset(self):
         QMessageBox.information(self, "提示", f"将按 {self.train_spin.value()}%/{self.val_spin.value()}% 分割数据集")
@@ -3955,9 +4230,9 @@ class DatasetWidget(QWidget):
         QMessageBox.information(self, "提示", f"将以 {fmt} 格式导出数据集")
 
     def _refresh_dataset_list(self):
-        import os
+        from utils.config import get_work_dir
         self.ds_table.setRowCount(0)
-        ds_root = os.path.join(os.getcwd(), 'datasets')
+        ds_root = os.path.join(get_work_dir(), 'datasets')
         if os.path.isdir(ds_root):
             for ds_name in os.listdir(ds_root):
                 ds_path = os.path.join(ds_root, ds_name)
@@ -4420,6 +4695,7 @@ class MainWindow(QMainWindow):
             ("🔍", "模型推理"),
             ("📈", "模型评估"),
             ("📤", "模型导出"),
+            ("🧭", "引导模式"),
             ("ℹ️", "关于"),
             ("💻", "终端"),
         ]
@@ -4461,6 +4737,7 @@ class MainWindow(QMainWindow):
         self.evaluation_widget = EvaluationWidget()
         self.export_widget = ExportWidget()
         self.about_widget = AboutWidget()
+        self.guide_widget = GuideWidget()
         self.terminal_widget = TerminalWidget()
 
         self.content_stack.addWidget(self.dashboard_widget)      # 0
@@ -4470,8 +4747,9 @@ class MainWindow(QMainWindow):
         self.content_stack.addWidget(self.inference_widget)      # 4
         self.content_stack.addWidget(self.evaluation_widget)     # 5
         self.content_stack.addWidget(self.export_widget)         # 6
-        self.content_stack.addWidget(self.about_widget)          # 7
-        self.content_stack.addWidget(self.terminal_widget)       # 8
+        self.content_stack.addWidget(self.guide_widget)          # 7
+        self.content_stack.addWidget(self.about_widget)          # 8
+        self.content_stack.addWidget(self.terminal_widget)       # 9
 
         main_layout.addWidget(self.content_stack)
 

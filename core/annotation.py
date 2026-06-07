@@ -18,9 +18,13 @@ class AnnotationManager:
         self.current_index = -1
         self.dataset_dir = None
 
-        # 新增：变更追踪
-        self.dirty_images = set()   # 有未保存变更的图片路径
-        self.clipboard = []         # 跨图片复制粘贴缓冲
+        # 变更追踪
+        self.dirty_images = set()
+        self.clipboard = []
+
+        # 图片缓存（LRU，最多 20 张常用图）
+        self._img_cache = {}        # {path: img_array}
+        self._cache_order = []      # MRU 顺序
 
     # ── 目录加载 ─────────────────────────────────────────────
 
@@ -87,16 +91,42 @@ class AnnotationManager:
     # ── 图片加载 ─────────────────────────────────────────────
 
     def load_image(self, index):
-        """加载指定索引的图片"""
+        """加载指定索引的图片（带缓存）"""
         if 0 <= index < len(self.image_list):
             self.current_index = index
             self.current_image_path = self.image_list[index]
+            # 先查缓存
+            img = self._img_cache.get(self.current_image_path)
+            if img is not None:
+                # 移到 MRU 头部
+                if self.current_image_path in self._cache_order:
+                    self._cache_order.remove(self.current_image_path)
+                self._cache_order.append(self.current_image_path)
+                self.current_image = img
+                return img
+            # 缓存未命中，从磁盘加载
             img = cv2.imread(self.current_image_path)
             if img is not None:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                self._add_to_cache(self.current_image_path, img)
                 self.current_image = img
                 return img
         return None
+
+    def _add_to_cache(self, path, img):
+        """加入缓存，超出上限时淘汰最旧的"""
+        if len(self._cache_order) >= 20:
+            old = self._cache_order.pop(0)
+            self._img_cache.pop(old, None)
+        self._img_cache[path] = img
+        self._cache_order.append(path)
+
+    def clear_image_cache(self):
+        """清理图片缓存（释放内存）"""
+        self._img_cache.clear()
+        self._cache_order.clear()
+        self.current_image = None
+        import gc; gc.collect()
 
     # ── 标注查询 ─────────────────────────────────────────────
 
