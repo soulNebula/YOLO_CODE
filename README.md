@@ -49,7 +49,7 @@
 | 🔍 **模型推理** | 图片/视频/摄像头检测，Benchmark 速度对比（PyTorch/ONNX/TRT），结果裁剪保存，CSV/JSON 导出 |
 | 📈 **模型评估** | Per-class 指标，混淆矩阵，FP/FN 误检漏检分析，多模型对比 |
 | 📤 **模型导出** | ONNX / TensorRT / OpenVINO / TFLite / TorchScript / CoreML 多格式导出 |
-| 🎨 **主题切换** | Ctrl+T 一键切换深色/浅色主题，侧边栏、仪表盘、引导页全部自适应 |
+| 🎨 **主题切换** | Ctrl+T 一键切换深色/浅色主题 |
 
 ---
 
