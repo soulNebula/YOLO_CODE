@@ -2023,7 +2023,7 @@ class TrainingWidget(QWidget):
             'close_mosaic': self.mosaic_spin.value(),
             'rect': self.rect_check.isChecked(),
             'seed': self.seed_spin.value(),
-            'project': 'runs',
+            'project': os.path.join(get_work_dir(), 'runs'),
             'name': 'train',
         }
 
@@ -2047,7 +2047,8 @@ class TrainingWidget(QWidget):
                 params['extra_args'] = extra
 
         # ── 检测可继续的训练 ──
-        last_pt, best_pt, prev_dir = find_latest_checkpoint('runs', 'train')
+        last_pt, best_pt, prev_dir = find_latest_checkpoint(
+            os.path.join(get_work_dir(), 'runs'), 'train')
         if last_pt:
             reply = QMessageBox.question(
                 self, "发现未完成的训练",
@@ -2074,16 +2075,22 @@ class TrainingWidget(QWidget):
 
         # 更新监控页信息
         run_name = params.get('name', 'train')
+        work_dir = get_work_dir()
         self.monitor_ds_label.setText(f"数据集: {Path(data_yaml).stem}")
-        self.monitor_model_label.setText(f"模型: {params['model']} → runs/{run_name}/")
+        self.monitor_model_label.setText(f"模型: {params['model']} → {work_dir}/runs/{run_name}/")
 
-        # 清空指标表格
+        # 清空指标表格和历史数据
+        self._epoch_data = []
         for r in range(5):
             for c in range(2):
                 self.metrics_table.setItem(r, c, QTableWidgetItem('---'))
                 self.metrics_table.item(r, c).setTextAlignment(Qt.AlignCenter)
                 self.metrics_table.item(r, c).setBackground(QColor('#ffffff'))
         self.metrics_epoch_label.setText("Epoch: ---")
+        self.loss_ax.clear(); self.loss_ax.set_title('Loss', fontsize=10, color='#333')
+        self.map_ax.clear(); self.map_ax.set_title('mAP', fontsize=10, color='#333')
+        self.loss_canvas.draw()
+        self.map_canvas.draw()
 
         # 重置曲线
         self.loss_ax.clear()
@@ -2215,8 +2222,8 @@ class TrainingWidget(QWidget):
             'mAP50-95': metrics.get('mAP50-95', 0),
         }
 
-        # 获取最佳值
-        best = self.manager.best_metrics
+        # 最佳值从信号数据中获取（worker 实时更新）
+        best = metrics.get('best', {})
         best_vals = {
             'box_loss': best.get('box_loss', 0),
             'cls_loss': best.get('cls_loss', 0),
@@ -2224,6 +2231,11 @@ class TrainingWidget(QWidget):
             'mAP50': best.get('mAP50', 0),
             'mAP50-95': best.get('mAP50-95', 0),
         }
+
+        # 累加 epoch 数据用于曲线
+        if not hasattr(self, '_epoch_data'):
+            self._epoch_data = []
+        self._epoch_data.append(dict(metrics))
 
         # 判断方向：loss越低越好，mAP越高越好
         def is_current_best(key, cur, bst):
@@ -2259,11 +2271,11 @@ class TrainingWidget(QWidget):
             self.metrics_table.setItem(row, 1, bst_item)
 
         # 更新epoch标签
-        total_epochs = self.epochs_spin.value()
+        total_epochs = metrics.get('total_epochs', self.epochs_spin.value())
         self.metrics_epoch_label.setText(f"Epoch: {epoch}/{total_epochs}")
 
         # 更新曲线
-        all_metrics = self.manager.epoch_metrics
+        all_metrics = self._epoch_data
         if len(all_metrics) > 0:
             epochs = [m['epoch'] for m in all_metrics]
             box_vals = [m['box_loss'] for m in all_metrics]
@@ -2680,6 +2692,15 @@ class InferenceWidget(QWidget):
         mid_split.setStretchFactor(1, 2)
 
         outer.addWidget(mid_split, 1)
+
+        # 推理日志
+        log_group = QGroupBox("推理日志")
+        log_layout = QVBoxLayout(log_group)
+        self.log_text = QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setMaximumHeight(100)
+        log_layout.addWidget(self.log_text)
+        outer.addWidget(log_group)
 
     # ========== 事件处理 ==========
 
@@ -4928,7 +4949,7 @@ class TerminalWidget(QWidget):
         w = f"{30 * '─'}"
         lines = [
             f"┌{w}┐",
-            f"│  YOLO CODE Terminal v1.8{' ' * (30 - 26)}│",
+            f"│  YOLO CODE Terminal v1.9{' ' * (30 - 26)}│",
             f"│  Python {sys.version.split()[0]:<25}│",
             f"│  {platform.platform()[:28]:<28}│",
             f"└{w}┘",
@@ -5037,7 +5058,7 @@ class AboutWidget(QWidget):
         title.setStyleSheet("font-size: 28px; font-weight: bold; color: #ff6b00; padding: 20px;")
         layout.addWidget(title)
 
-        version_label = QLabel("版本 1.2.0")
+        version_label = QLabel("版本 1.9.0")
         version_label.setAlignment(Qt.AlignCenter)
         version_label.setStyleSheet("font-size: 15px; color: #999999;")
         layout.addWidget(version_label)
@@ -5089,7 +5110,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("YOLO CODE 模型训练平台 v1.8.0")
+        self.setWindowTitle("YOLO CODE 模型训练平台 v1.9.0")
         self.resize(1800, 1060)
         self.setMinimumSize(1340, 820)
         self._init_ui()
@@ -5189,7 +5210,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addStretch()
 
         # 底部版本信息
-        ver_label = QLabel("v1.8.0")
+        ver_label = QLabel("v1.9.0")
         ver_label.setObjectName("versionLabel")
         ver_label.setAlignment(Qt.AlignCenter)
         sidebar_layout.addWidget(ver_label)

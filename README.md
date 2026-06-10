@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8-orange" alt="version" />
+  <img src="https://img.shields.io/badge/version-1.9-orange" alt="version" />
   <img src="https://img.shields.io/badge/python-3.10+-blue" alt="python" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="platform" />
@@ -391,5 +391,5 @@ YOLO_CODE/
 ---
 
 <p align="center">
-  <strong>YOLO CODE</strong> v1.8 — Built with Ultralytics YOLO + PyQt5 + Matplotlib
+  <strong>YOLO CODE</strong> v1.9 — Built with Ultralytics YOLO + PyQt5 + Matplotlib
 </p>

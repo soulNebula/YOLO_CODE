@@ -1,7 +1,61 @@
 import os
 import sys
+import io
+import re
 import subprocess
 from PyQt5.QtCore import QThread, pyqtSignal
+
+
+class _TrainingStream(io.TextIOBase):
+    """捕获 ultralytics 输出并转发到训练日志"""
+
+    def __init__(self, log_signal):
+        super().__init__()
+        self._log = log_signal
+        self._buffer = ''
+        self._progress_pattern = re.compile(
+            r'(Downloading|Scanning|Fast image|New cache|Plotting|Image sizes|'
+            r'Using \d+|Logging results|Starting training)\b'
+        )
+
+    def write(self, s):
+        if not s:
+            return 0
+        self._buffer += s
+        # 有换行时输出完整行
+        while '\n' in self._buffer:
+            line, self._buffer = self._buffer.split('\n', 1)
+            line = line.strip('\r')
+            if line.strip():
+                self._emit_line(line)
+        # 处理 \r 结尾的进度行（如 100% | 进度条）
+        if '\r' in self._buffer:
+            parts = self._buffer.split('\r')
+            self._buffer = parts[-1]
+            for part in parts[:-1]:
+                part = part.strip()
+                if part.strip():
+                    self._emit_line(part)
+        return len(s)
+
+    def _emit_line(self, line):
+        # 清理进度条字符和 ANSI 转义
+        clean = re.sub(r'[─-╿▀-▟■-◿]', '', line)
+        clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', clean)
+        clean = clean.strip()
+        if not clean:
+            return
+        # 压缩过长的进度行
+        if len(clean) > 200 and any(kw in clean for kw in ('Downloading', '100%')):
+            # 只保留开头和百分比
+            pct_match = re.search(r'(\d{1,3}%)', clean)
+            if pct_match:
+                prefix = clean[:clean.index(pct_match.group()) - 1] if pct_match.start() > 0 else ''
+                clean = f"{prefix} {pct_match.group(1)}"
+        self._log(clean)
+
+    def flush(self):
+        pass
 
 
 def _preload_torch_dll():
@@ -408,12 +462,17 @@ class TrainingWorker(QThread):
                 self.log.emit(f"附加: {extra}")
             self.log.emit(f"输出目录: {project}/{name}")
 
+            # ── 预下载模型（带进度，保存到工作目录 models/） ──
+            model_path = f"{model_name}.pt"
+            if pretrained and not resume:
+                model_path = self._ensure_model_downloaded(model_name)
+
             if resume and resume_ckpt:
                 self.log.emit(f"从 checkpoint 继续训练: {resume_ckpt}")
                 model = YOLO(resume_ckpt)
             elif pretrained:
-                model = YOLO(f"{model_name}.pt")
-                self.log.emit("使用预训练权重")
+                model = YOLO(model_path)
+                self.log.emit("模型加载完成，使用预训练权重")
             else:
                 model = YOLO(f"{model_name}.yaml")
                 self.log.emit("从头开始训练")
@@ -436,7 +495,7 @@ class TrainingWorker(QThread):
                 'name': name,
                 'exist_ok': False,
                 'resume': resume,
-                'verbose': False,
+                'verbose': True,
                 'optimizer': optimizer,
                 'close_mosaic': close_mosaic,
                 'warmup_epochs': warmup_epochs,
@@ -450,20 +509,37 @@ class TrainingWorker(QThread):
             if extra_args:
                 train_args.update(extra_args)
 
+            # ── 切换到工作目录（ultralytics 下载/生成文件都落在工作目录） ──
+            from utils.config import get_work_dir
+            work_dir = get_work_dir()
+            old_cwd = os.getcwd()
+            os.chdir(work_dir)
+            self.log.emit(f"工作目录: {work_dir}")
+
+            # ── 重定向 stdout/stderr，捕获 ultralytics 全部输出到日志 ──
+            old_stdout, old_stderr = sys.stdout, sys.stderr
+            cap = _TrainingStream(self.log.emit)
+            sys.stdout = cap
+            sys.stderr = cap
             try:
-                model.train(**train_args)
-            except KeyboardInterrupt:
-                self.log.emit("⚠ 训练被用户中断")
-                self.finished.emit(self.best_metrics)
-                return
-            except RuntimeError as e:
-                msg = str(e)
-                if 'stop' in msg.lower() or 'interrupt' in msg.lower():
-                    self.log.emit("⚠ 训练已停止")
-                else:
-                    self.error.emit(f"训练运行错误: {msg}")
+                try:
+                    model.train(**train_args)
+                except KeyboardInterrupt:
+                    self.log.emit("训练被用户中断")
                     self.finished.emit(self.best_metrics)
-                return
+                    return
+                except RuntimeError as e:
+                    msg = str(e)
+                    if 'stop' in msg.lower() or 'interrupt' in msg.lower():
+                        self.log.emit("训练已停止")
+                    else:
+                        self.error.emit(f"训练运行错误: {msg}")
+                        self.finished.emit(self.best_metrics)
+                    return
+            finally:
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+                os.chdir(old_cwd)
 
             self.log.emit(f"训练完成! 模型保存至: {project}/{name}/weights/")
             self.progress.emit(100, 100, 0)
@@ -476,6 +552,70 @@ class TrainingWorker(QThread):
         except Exception as e:
             self.error.emit(f"训练出错: {str(e)}")
             self.finished.emit(self.best_metrics)
+
+    def _ensure_model_downloaded(self, model_name):
+        """下载模型文件到工作目录的 models/ 下，返回模型路径"""
+        import urllib.request
+        from utils.config import get_work_dir
+
+        model_file = f"{model_name}.pt"
+        work_dir = get_work_dir()
+        models_dir = os.path.join(work_dir, 'models')
+        os.makedirs(models_dir, exist_ok=True)
+        dest_path = os.path.join(models_dir, model_file)
+
+        # 1. 检查工作目录 models/
+        if os.path.isfile(dest_path) and os.path.getsize(dest_path) > 1000000:
+            self.log.emit(f"模型已缓存: {dest_path}")
+            return dest_path
+
+        # 2. 检查常见缓存位置
+        for d in [
+            '.',
+            os.path.expanduser('~/.cache/torch/hub/ultralytics/yolo/v8'),
+            os.path.expanduser('~/AppData/Local/ultralytics'),
+        ]:
+            path = os.path.join(d, model_file)
+            if os.path.isfile(path) and os.path.getsize(path) > 1000000:
+                self.log.emit(f"模型已缓存: {path}")
+                return path
+
+        # 3. 需要下载 → 下载到工作目录 models/ 下
+        url = f"https://github.com/ultralytics/assets/releases/download/v8.3.0/{model_file}"
+        self.log.emit(f"正在下载 {model_name}.pt → {dest_path} ...")
+
+        try:
+            # 先获取文件大小
+            req = urllib.request.Request(url, method='HEAD')
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                total = int(resp.headers.get('Content-Length', 0))
+
+            if total > 0:
+                size_mb = total / (1024 * 1024)
+                self.log.emit(f"模型大小: {size_mb:.1f} MB，开始下载...")
+
+            downloaded = [0]
+            last_pct = [-1]
+
+            def progress_hook(block_count, block_size, total_size):
+                downloaded[0] = block_count * block_size
+                if total_size > 0:
+                    pct = min(int(downloaded[0] / total_size * 100), 100)
+                    if pct // 10 != last_pct[0] // 10 or pct >= 100:
+                        mb_done = downloaded[0] / (1024 * 1024)
+                        mb_total = total_size / (1024 * 1024)
+                        self.log.emit(
+                            f"下载进度: {pct}% ({mb_done:.1f}/{mb_total:.1f} MB)"
+                        )
+                        last_pct[0] = pct
+
+            tmp_path, _ = urllib.request.urlretrieve(url, dest_path, progress_hook)
+            self.log.emit(f"下载完成: {os.path.abspath(tmp_path)}")
+            return tmp_path
+
+        except Exception as e:
+            self.log.emit(f"预下载失败，尝试让 ultralytics 自行下载: {e}")
+            return f"{model_name}.pt"  # 回退：让 YOLO() 自己处理
 
     def _on_epoch_end(self, trainer):
         """每轮结束回调——在 QThread 中运行，通过信号安全发送到 UI"""
@@ -508,11 +648,13 @@ class TrainingWorker(QThread):
 
             epoch_data = {
                 'epoch': epoch,
+                'total_epochs': total,
                 'box_loss': box_loss,
                 'cls_loss': cls_loss,
                 'dfl_loss': dfl_loss,
                 'mAP50': map50,
                 'mAP50-95': map50_95,
+                'best': dict(self.best_metrics),
             }
             self.epoch_metrics.append(epoch_data)
 

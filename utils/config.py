@@ -134,6 +134,26 @@ def auto_scan(work_dir=None):
                         size_mb = 0
                     result['models'].append({'name': f, 'size': f'{size_mb:.1f} MB', 'path': full})
 
+    # 4. 递归扫描 runs/ 中的训练产物（best.pt, last.pt）
+    runs_root = os.path.join(work_dir, 'runs')
+    seen_paths = {m['path'] for m in result['models']}
+    if os.path.isdir(runs_root):
+        for root, _, files in os.walk(runs_root):
+            for f in sorted(files):
+                if f.endswith('.pt'):
+                    full = os.path.join(root, f)
+                    if os.path.isfile(full) and full not in seen_paths:
+                        # 用相对路径作为显示名，如 detect/train/weights/best.pt
+                        rel = os.path.relpath(full, work_dir).replace('\\', '/')
+                        try:
+                            size_mb = os.path.getsize(full) / (1024 * 1024)
+                        except Exception:
+                            size_mb = 0
+                        result['models'].append({
+                            'name': rel, 'size': f'{size_mb:.1f} MB', 'path': full
+                        })
+                        seen_paths.add(full)
+
     return result
 
 

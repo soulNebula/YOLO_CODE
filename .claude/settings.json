@@ -4,7 +4,8 @@
       "Bash(ls -la \"c:/Users/Administrator/.claude/\" && echo \"---\" && ls \"c:/Users/Administrator/Desktop/YOLO_CODE/.claude/\" 2>/dev/null || echo \"no project .claude\")",
       "Read(//c/Users/Administrator/.claude/**)",
       "WebFetch(domain:github.com)",
-      "Read(//tmp/superpowers/**)"
+      "Read(//tmp/superpowers/**)",
+      "Bash(python -m py_compile core/training.py)"
     ]
   }
 }
