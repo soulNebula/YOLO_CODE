@@ -34,14 +34,10 @@ class AnnotationManager:
         self.image_list = []
 
         # 智能检测数据集根目录
-        # 如果打开的是 images/ 子目录且上级有 classes.txt 或 labels/，则以上级为 dataset_dir
+        # 如果打开的是 images/ 子目录，始终以父目录为 dataset_dir
+        # （即使是新数据集还没有 labels/ 或 classes.txt，也应该把标注保存到父目录的 labels/ 下）
         parent = os.path.dirname(os.path.abspath(dir_path))
-        is_images_subdir = os.path.basename(os.path.abspath(dir_path)) == 'images'
-        has_parent_markers = (
-            os.path.isfile(os.path.join(parent, 'classes.txt')) or
-            os.path.isdir(os.path.join(parent, 'labels'))
-        )
-        if is_images_subdir and has_parent_markers:
+        if os.path.basename(os.path.abspath(dir_path)) == 'images':
             self.dataset_dir = parent
             images_dir = dir_path
         else:
@@ -351,6 +347,20 @@ class AnnotationManager:
             f.write('\n'.join(lines) + ('\n' if lines else ''))
         return True
 
+    def is_discarded(self, image_path=None):
+        """检查图片是否已被标记为废弃"""
+        if not self.dataset_dir:
+            return False
+        path = image_path or self.current_image_path
+        if not path:
+            return False
+        discard_file = os.path.join(self.dataset_dir, 'discarded.txt')
+        if not os.path.isfile(discard_file):
+            return False
+        img_name = os.path.basename(path)
+        with open(discard_file, 'r', encoding='utf-8') as f:
+            return img_name in {line.strip() for line in f}
+
     # ── 类别管理 ─────────────────────────────────────────────
 
     def delete_class(self, index):
@@ -426,9 +436,12 @@ class AnnotationManager:
     # ── 保存 ─────────────────────────────────────────────────
 
     def save_annotations(self):
-        """保存所有标注为YOLO格式"""
+        """保存所有标注为YOLO格式，同时删除已标记为废弃的图片"""
         if not self.dataset_dir:
             return
+
+        # ── 先删除已被标记为废弃的图片和标注 ──
+        purged = self._purge_discarded()
 
         labels_dir = os.path.join(self.dataset_dir, 'labels')
         os.makedirs(labels_dir, exist_ok=True)
@@ -456,6 +469,73 @@ class AnnotationManager:
             with open(classes_path, 'w', encoding='utf-8') as f:
                 for cls_name in self.classes:
                     f.write(cls_name + '\n')
+
+        return purged
+
+    def _purge_discarded(self):
+        """删除 discarded.txt 中记录的所有图片和对应标注文件，返回删除数量"""
+        discard_file = os.path.join(self.dataset_dir, 'discarded.txt')
+        if not os.path.isfile(discard_file):
+            return 0
+
+        with open(discard_file, 'r', encoding='utf-8') as f:
+            discarded_names = {line.strip() for line in f if line.strip()}
+
+        if not discarded_names:
+            return 0
+
+        labels_dir = os.path.join(self.dataset_dir, 'labels')
+        purged = 0
+
+        for img_name in discarded_names:
+            img_stem = Path(img_name).stem
+
+            # 删除图片（在所有可能的图片目录中查找）
+            for search_dir in (os.path.join(self.dataset_dir, 'images'), self.dataset_dir):
+                if not os.path.isdir(search_dir):
+                    continue
+                for root, _, files in os.walk(search_dir):
+                    for f in files:
+                        if f == img_name or Path(f).stem == img_stem:
+                            img_path = os.path.join(root, f)
+                            try:
+                                os.remove(img_path)
+                                purged += 1
+                            except OSError:
+                                pass
+
+            # 删除对应标注文件
+            for search_dir in (labels_dir, os.path.join(self.dataset_dir, 'images', 'labels')):
+                if not os.path.isdir(search_dir):
+                    continue
+                for root, _, files in os.walk(search_dir):
+                    lbl_name = img_stem + '.txt'
+                    if lbl_name in files:
+                        try:
+                            os.remove(os.path.join(root, lbl_name))
+                        except OSError:
+                            pass
+
+            # 清理内存中的记录
+            for img_path in list(self.annotations.keys()):
+                if Path(img_path).stem == img_stem:
+                    del self.annotations[img_path]
+                    self.dirty_images.discard(img_path)
+            self.image_list = [p for p in self.image_list if Path(p).stem != img_stem]
+
+        # 清空 discarded.txt
+        with open(discard_file, 'w', encoding='utf-8') as f:
+            f.write('')
+
+        # 清理缓存
+        purged_stems = {Path(n).stem for n in discarded_names}
+        for img_path in list(self._img_cache.keys()):
+            if Path(img_path).stem in purged_stems:
+                del self._img_cache[img_path]
+                if img_path in self._cache_order:
+                    self._cache_order.remove(img_path)
+
+        return purged
 
     def save_classes(self, classes):
         """保存类别列表"""

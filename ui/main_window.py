@@ -834,6 +834,7 @@ class AnnotationWidget(QWidget):
                 self.canvas.load_image(img, self.manager.get_current_annotations())
                 self._update_nav()
                 self._refresh_anno_table()
+                self._update_discard_state()  # 每切一帧刷新废弃按钮状态
         except Exception:
             pass
 
@@ -1056,12 +1057,25 @@ class AnnotationWidget(QWidget):
     # ── 保存 ─────────────────────────────────────────────────
 
     def _save_annotations(self):
-        self.manager.save_annotations()
+        purged = self.manager.save_annotations()
         self._update_save_indicator()
-        QMessageBox.information(
-            self, "提示",
-            f"标注已保存到:\n{self.manager.dataset_dir}/labels/"
-        )
+
+        # 废弃图片已被删除，刷新当前视图
+        if purged:
+            self._update_discard_state()
+            if self.manager.current_index < 0 and self.manager.image_list:
+                self._load_image_at(0)
+            elif self.manager.current_image_path:
+                # 重新加载以刷新标注显示
+                idx = self.manager.current_index
+                if 0 <= idx < len(self.manager.image_list):
+                    self._load_image_at(idx)
+            self._update_nav()
+
+        msg = f"标注已保存到:\n{self.manager.dataset_dir}/labels/"
+        if purged:
+            msg += f"\n\n已删除 {purged} 张无效图片及其标注文件"
+        QMessageBox.information(self, "提示", msg)
 
     # ── 模式/缩放回调 ────────────────────────────────────────
 
@@ -1099,29 +1113,44 @@ class AnnotationWidget(QWidget):
             self._refresh_anno_table()
 
     def _discard_current(self):
-        """标记当前图片为废弃（确认后执行）"""
+        """标记当前图片为无效（保存时自动删除）"""
         if not self.manager.current_image_path:
             return
         fname = os.path.basename(self.manager.current_image_path)
         reply = QMessageBox.question(
             self, "标记无效",
-            f"确定将图片 '{fname}' 标记为无效？\n"
-            f"标记后训练时将被自动跳过。",
+            f"确定将图片 '{fname}' 标记为无效？\n\n"
+            f"点击「保存所有标注」时将自动删除该图片及其标注文件，\n"
+            f"在此之前可通过「取消无效标记」撤销。",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply == QMessageBox.Yes:
             self.manager.discard_current_image()
-            self.discard_btn.setText("✓ 已标记无效")
-            self.discard_btn.setStyleSheet("color: #e74c3c;")
+            self._update_discard_state()
+            # 自动跳到下一张
+            idx = self.manager.current_index + 1
+            if idx < len(self.manager.image_list):
+                self._navigate_to(idx)
+            else:
+                self.canvas.load_image(None, [])
+                self._update_nav()
 
     def _undiscard_current(self):
         """取消当前图片的无效标记"""
         if self.manager.undiscard_current_image():
-            self.discard_btn.setText("标记无效")
-            self.discard_btn.setStyleSheet("")
+            self._update_discard_state()
             QMessageBox.information(self, "已取消", "已取消当前图片的无效标记")
         else:
             QMessageBox.information(self, "提示", "当前图片未被标记为无效")
+
+    def _update_discard_state(self):
+        """根据当前图片的实际状态刷新废弃按钮"""
+        if self.manager.is_discarded():
+            self.discard_btn.setText("✓ 已标记无效")
+            self.discard_btn.setStyleSheet("color: #e74c3c;")
+        else:
+            self.discard_btn.setText("标记无效")
+            self.discard_btn.setStyleSheet("")
 
     def _check_quality(self):
         """标注质量检查"""
@@ -1142,7 +1171,7 @@ class AnnotationWidget(QWidget):
         QMessageBox.information(self, "标注质量检查", msg)
 
     def _batch_rename(self):
-        """批量重命名图片（按序号）"""
+        """批量重命名图片（按序号），同步重命名对应的标注文件"""
         if not self.manager.dataset_dir:
             QMessageBox.warning(self, "提示", "请先打开数据集目录")
             return
@@ -1153,16 +1182,55 @@ class AnnotationWidget(QWidget):
         images_dir = os.path.join(self.manager.dataset_dir, 'images')
         if not os.path.isdir(images_dir):
             images_dir = self.manager.dataset_dir
+        labels_dir = os.path.join(self.manager.dataset_dir, 'labels')
+
         ext_set = {'.jpg', '.jpeg', '.png', '.bmp'}
         images = sorted([f for f in os.listdir(images_dir) if Path(f).suffix.lower() in ext_set])
-        renamed = 0
+        renamed_img = 0
+        renamed_lbl = 0
         for i, fname in enumerate(images, 1):
-            old = os.path.join(images_dir, fname)
-            new = os.path.join(images_dir, f"{prefix}_{i:04d}{Path(fname).suffix}")
-            if old != new:
-                os.rename(old, new)
-                renamed += 1
-        QMessageBox.information(self, "完成", f"已重命名 {renamed} 个文件\n格式: {prefix}_0001.jpg ...")
+            old_img = os.path.join(images_dir, fname)
+            old_stem = Path(fname).stem
+            new_stem = f"{prefix}_{i:04d}"
+            new_img = os.path.join(images_dir, f"{new_stem}{Path(fname).suffix}")
+
+            if old_img != new_img:
+                # 同步重命名对应的标注文件
+                old_lbl = os.path.join(labels_dir, f"{old_stem}.txt")
+                new_lbl = os.path.join(labels_dir, f"{new_stem}.txt")
+                if os.path.isfile(old_lbl):
+                    os.rename(old_lbl, new_lbl)
+                    renamed_lbl += 1
+                # 也检查 train/val 子目录中的标注
+                for sub in ['train', 'val']:
+                    old_lbl_sub = os.path.join(labels_dir, sub, f"{old_stem}.txt")
+                    new_lbl_sub = os.path.join(labels_dir, sub, f"{new_stem}.txt")
+                    if os.path.isfile(old_lbl_sub):
+                        os.rename(old_lbl_sub, new_lbl_sub)
+                        renamed_lbl += 1
+
+                os.rename(old_img, new_img)
+                renamed_img += 1
+
+        # 刷新标注数据中的路径引用
+        self.manager.image_list = []
+        for f in sorted(os.listdir(images_dir)):
+            if Path(f).suffix.lower() in ext_set:
+                self.manager.image_list.append(os.path.join(images_dir, f))
+        # 如果图片不在 images/ 根目录（已分割到 train/val），也扫描子目录
+        for sub in ['train', 'val']:
+            sub_dir = os.path.join(images_dir, sub)
+            if os.path.isdir(sub_dir):
+                for f in sorted(os.listdir(sub_dir)):
+                    if Path(f).suffix.lower() in ext_set:
+                        self.manager.image_list.append(os.path.join(sub_dir, f))
+
+        QMessageBox.information(
+            self, "完成",
+            f"已重命名 {renamed_img} 个图片文件\n"
+            f"已同步重命名 {renamed_lbl} 个标注文件\n"
+            f"格式: {prefix}_0001.jpg / {prefix}_0001.txt"
+        )
 
 
 # ── 数据集验证对话框 ────────────────────────────────────────
@@ -4409,6 +4477,15 @@ class DatasetWidget(QWidget):
 
         labels_dir = os.path.join(ds_path, 'labels')
         has_labels = os.path.isdir(labels_dir)
+        # 兼容旧版 bug：标注可能被错误保存在 images/labels/ 下，先迁移到正确位置
+        alt_labels = os.path.join(images_dir, 'labels')
+        if not has_labels and os.path.isdir(alt_labels):
+            os.makedirs(labels_dir, exist_ok=True)
+            for lbl_file in os.listdir(alt_labels):
+                shutil.move(os.path.join(alt_labels, lbl_file),
+                           os.path.join(labels_dir, lbl_file))
+            shutil.rmtree(alt_labels)
+            has_labels = True
         if has_labels:
             for sub in ['train', 'val']:
                 os.makedirs(os.path.join(labels_dir, sub), exist_ok=True)

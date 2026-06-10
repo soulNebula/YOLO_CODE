@@ -99,20 +99,59 @@ def validate_dataset(data_yaml_path):
         result.errors.append(Issue(data_yaml_path, 'no_images', '图片目录中无图片文件'))
         return result
 
-    # 4. 找标签目录
-    labels_dir = os.path.join(base_path, 'labels')
-    if not os.path.isdir(labels_dir):
-        # 也尝试 image_dir/../labels
-        labels_dir = os.path.join(os.path.dirname(image_dirs[0]), 'labels') if image_dirs else None
-        if not labels_dir or not os.path.isdir(labels_dir):
-            result.warnings.append(Issue(
-                base_path, 'no_labels_dir',
-                f'未找到 labels 目录（{labels_dir}），所有图片将被视为无标注'
-            ))
-            return result
+    # 4. 为每个图片目录推导对应的标签目录（支持分割后的 train/val 子目录）
+    #    例如: images/train/ → labels/train/, images/val/ → labels/val/
+    img_to_labels_map = {}  # {image_dir: labels_dir}
+    for img_dir in image_dirs:
+        # 尝试从图片目录路径推导标签目录
+        rel = os.path.relpath(img_dir, base_path)
+        # 把路径中的 images 替换为 labels
+        if 'images' in rel:
+            candidate = os.path.join(base_path, rel.replace('images', 'labels', 1))
+        else:
+            candidate = os.path.join(os.path.dirname(img_dir), 'labels', os.path.basename(img_dir))
+        if os.path.isdir(candidate):
+            img_to_labels_map[img_dir] = candidate
+        else:
+            # fallback: 直接用 labels/ 根（未分割的数据集）
+            fallback = os.path.join(base_path, 'labels')
+            if os.path.isdir(fallback):
+                img_to_labels_map[img_dir] = fallback
+
+    if not img_to_labels_map:
+        labels_dir = os.path.join(base_path, 'labels')
+        if os.path.isdir(labels_dir):
+            img_to_labels_map = {d: labels_dir for d in image_dirs}
+
+    if not img_to_labels_map:
+        result.warnings.append(Issue(
+            base_path, 'no_labels_dir',
+            f'未找到 labels 目录（检查过 labels/、labels/train/、labels/val/），所有图片将被视为无标注'
+        ))
+        return result
 
     # 5. 逐图片检查
     for stem, img_path in sorted(image_map.items()):
+        # 找出该图片所属的图片目录，从而找到对应的标签目录
+        img_dir = os.path.dirname(img_path)
+        labels_dir = img_to_labels_map.get(img_dir)
+        if labels_dir is None:
+            # 回退: 在所有标签目录中查找
+            found = False
+            for lbl_dir in img_to_labels_map.values():
+                lp = os.path.join(lbl_dir, stem + '.txt')
+                if os.path.isfile(lp):
+                    labels_dir = lbl_dir
+                    found = True
+                    break
+            if not found:
+                result.errors.append(Issue(
+                    img_path, 'missing_label',
+                    '缺少标注文件',
+                    label_file=os.path.join(list(img_to_labels_map.values())[0], stem + '.txt')
+                ))
+                continue
+
         label_path = os.path.join(labels_dir, stem + '.txt')
 
         # 5a. 无标签文件
@@ -290,25 +329,26 @@ def validate_yaml_consistency(data_yaml_path):
 
     found_ids = set()
     if os.path.isdir(labels_dir):
-        for fname in os.listdir(labels_dir):
-            if not fname.endswith('.txt'):
-                continue
-            fpath = os.path.join(labels_dir, fname)
-            try:
-                with open(fpath, 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            try:
-                                cls_id = int(parts[0])
-                                found_ids.add(cls_id)
-                            except ValueError:
-                                pass
-            except Exception:
-                pass
+        for root, _, files in os.walk(labels_dir):
+            for fname in files:
+                if not fname.endswith('.txt'):
+                    continue
+                fpath = os.path.join(root, fname)
+                try:
+                    with open(fpath, 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            parts = line.split()
+                            if len(parts) >= 5:
+                                try:
+                                    cls_id = int(parts[0])
+                                    found_ids.add(cls_id)
+                                except ValueError:
+                                    pass
+                except Exception:
+                    pass
 
     result.found_class_ids = found_ids
 
@@ -461,26 +501,33 @@ def check_annotation_quality(dataset_dir):
         'annotated_images': 0, 'orphan_labels': []
     }
 
-    # 收集图片
+    # 收集图片（支持分割后的 train/val 子目录）
     img_stems = {}
     for sub in ['images', '']:
         d = os.path.join(dataset_dir, sub) if sub else dataset_dir
         if os.path.isdir(d):
-            for f in os.listdir(d):
-                if Path(f).suffix.lower() in ext_set:
-                    img_stems[Path(f).stem] = os.path.join(d, f)
+            # 递归扫描：如果存在 images/train/、images/val/ 也一并收集
+            for root, _, files in os.walk(d):
+                for f in files:
+                    if Path(f).suffix.lower() in ext_set:
+                        stem = Path(f).stem
+                        if stem not in img_stems:
+                            img_stems[stem] = os.path.join(root, f)
     result['total_images'] = len(img_stems)
 
-    # 收集标签
+    # 收集标签（支持分割后的 train/val 子目录）
     labels_dir = os.path.join(dataset_dir, 'labels')
     if not os.path.isdir(labels_dir):
         result['missing_labels'] = list(img_stems.keys())
         return result
 
     label_stems = {}
-    for f in os.listdir(labels_dir):
-        if f.endswith('.txt'):
-            label_stems[Path(f).stem] = os.path.join(labels_dir, f)
+    for root, _, files in os.walk(labels_dir):
+        for f in files:
+            if f.endswith('.txt'):
+                stem = Path(f).stem
+                if stem not in label_stems:
+                    label_stems[stem] = os.path.join(root, f)
 
     # classes.txt
     classes = []

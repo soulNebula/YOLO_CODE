@@ -489,11 +489,25 @@ class ImageCanvas(QLabel):
                 dx = img_x - self.drag_start_pos[0]
                 dy = img_y - self.drag_start_pos[1]
                 ann = self.annotation_view[self.selected_bbox_idx]
-                if 'x1' in ann:
-                    ann['x1'] += dx
-                    ann['y1'] += dy
-                    ann['x2'] += dx
-                    ann['y2'] += dy
+                if 'x1' in ann and self.original_image is not None:
+                    h, w = self.original_image.shape[:2]
+                    # 边界钳制：框不能移出图片
+                    bw = ann['x2'] - ann['x1']
+                    bh = ann['y2'] - ann['y1']
+                    new_x1 = ann['x1'] + dx
+                    new_y1 = ann['y1'] + dy
+                    if new_x1 < 0:
+                        new_x1 = 0
+                    if new_y1 < 0:
+                        new_y1 = 0
+                    if new_x1 + bw >= w:
+                        new_x1 = w - bw - 1
+                    if new_y1 + bh >= h:
+                        new_y1 = h - bh - 1
+                    ann['x1'] = new_x1
+                    ann['y1'] = new_y1
+                    ann['x2'] = new_x1 + bw
+                    ann['y2'] = new_y1 + bh
                 self.drag_start_pos = (img_x, img_y)
                 self._invalidate()
             else:
